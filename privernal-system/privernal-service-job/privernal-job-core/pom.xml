@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>com.privernal</groupId>
+        <artifactId>privernal-service-job</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>privernal-job-core</artifactId>
+
+    <description>
+        定时任务调度内核与管理面（DB 事实源 + 本地执行池 + DB 租约选主）
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-job-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-mybatis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-datascope</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-datasource</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-log</artifactId>
+        </dependency>
+        <!-- 站内信动作（MESSAGE_NOTIFY）与消息兜底先例（§8.1） -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-message-core</artifactId>
+        </dependency>
+        <!-- FORM_DATA_OP 动作、表名前缀解析重载（§8.3） -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-dynamic-core</artifactId>
+        </dependency>
+        <!-- outbox-compensate 动作（Webhook 事件表与投递器在 system-core，§12.3） -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-system-core</artifactId>
+        </dependency>
+        <!-- same-token-refresh 动作（SaSameUtil，§17 SYSTEM 存量任务迁入） -->
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-spring-boot3-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <!-- T10 确定性用例（§13 用例 4/6/12/8d）：jitter 确定性、misfire 边界、TTL 残留、uk_idem 并发窗口 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- 父 pom surefire 全局 skip=true（硬编码）；本模块放开以承载 T10 确定性用例 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <skip>false</skip>
+                    <testFailureIgnore>false</testFailureIgnore>
+                    <forkMode>once</forkMode>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

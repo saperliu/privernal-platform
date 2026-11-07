@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemDictionaryDataMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemDictionaryData" id="SystemDictionaryDataResult">
+        <result property="id"    column="id"    />
+        <result property="dictSort"    column="dict_sort"    />
+        <result property="dictLabel"    column="dict_label"    />
+        <result property="dictValue"    column="dict_value"    />
+        <result property="dictType"    column="dict_type"    />
+        <result property="dictTypeName"    column="dictTypeName"    />
+        <result property="cssClass"    column="css_class"    />
+        <result property="listClass"    column="list_class"    />
+        <result property="isDefault"    column="is_default"    />
+        <result property="status"    column="status"    />
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="remark"    column="remark"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="departmentId"    column="department_id"    />
+    </resultMap>
+
+    <sql id="selectSystemDictionaryDataVo">
+        select dictionaryData.id, dictionaryData.dict_sort, dictionaryData.dict_label, dictionaryData.dict_value, dictionaryType.dict_name as dictTypeName, dictionaryData.dict_type, dictionaryData.css_class, dictionaryData.list_class, dictionaryData.is_default, dictionaryData.status, dictionaryData.tenant_id, dictionaryData.revision, dictionaryData.created_by, dictionaryData.created_time, dictionaryData.updated_by, dictionaryData.updated_time, dictionaryData.deleted_flag, dictionaryData.deleted_by, dictionaryData.deleted_time, dictionaryData.remark, dictionaryData.organization_id, dictionaryData.department_id
+        from system_dictionary_data as dictionaryData
+        left join system_dictionary_type as dictionaryType on dictionaryData.dict_type = dictionaryType.dict_type
+    </sql>
+
+    <select id="selectSystemDictionaryDataList" parameterType="com.privernal.system.filter.SystemDictionaryDataFilterDTO" resultMap="SystemDictionaryDataResult">
+        <include refid="selectSystemDictionaryDataVo"/>
+        <where>
+            dictionaryData.deleted_flag = 'N'
+            <if test="id != null  and id != ''"> and dictionaryData.id = #{id}</if>
+            <if test="dictSort != null "> and dictionaryData.dict_sort = #{dictSort}</if>
+            <if test="dictLabel != null  and dictLabel != ''"> and dictionaryData.dict_label = #{dictLabel}</if>
+            <if test="dictValue != null  and dictValue != ''"> and dictionaryData.dict_value = #{dictValue}</if>
+            <if test="dictType != null  and dictType != ''"> and dictionaryData.dict_type = #{dictType}</if>
+            <if test="cssClass != null  and cssClass != ''"> and css_class = #{cssClass}</if>
+            <if test="listClass != null  and listClass != ''"> and list_class = #{listClass}</if>
+            <if test="isDefault != null  and isDefault != ''"> and is_default = #{isDefault}</if>
+            <if test="status != null "> and dictionaryData.status = #{status}</if>
+            <if test="remark != null  and remark != ''"> and dictionaryData.remark = #{remark}</if>
+            <if test="organizationId != null  and organizationId != ''"> and dictionaryData.organization_id = #{organizationId}</if>
+            <if test="departmentId != null  and departmentId != ''"> and dictionaryData.department_id = #{departmentId}</if>
+        </where>
+    </select>
+    <select id="selectSystemDictionaryDataByTypeAndValue"
+            resultType="com.privernal.system.domain.SystemDictionaryData">
+        <include refid="selectSystemDictionaryDataVo"/>
+            where
+            dictionaryData.deleted_flag = 'N'
+            and dictionaryData.dict_type = #{dictType}
+            and dictionaryData.dict_value = #{dictValue}
+    </select>
+
+
+</mapper>

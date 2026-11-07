@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.flow.mapper.FlowFormBtnPermMapper">
+
+    <sql id="selectFlowFormBtnPermVo">
+        select id, tenant_id, revision, created_by, created_time, updated_by, updated_time,
+               deleted_flag, deleted_by, deleted_time, department_id, organization_id, remark,
+               version_id, flow_code, version, node_code, btn_code, btn_name, alias_name,
+               is_show, show_dialog, color, sort
+        from flow_form_btn_perm as flowFormBtnPerm
+    </sql>
+
+    <select id="selectFlowFormBtnPermList" parameterType="com.privernal.flow.domain.FlowFormBtnPerm"
+            resultType="com.privernal.flow.domain.FlowFormBtnPerm">
+        <include refid="selectFlowFormBtnPermVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="versionId != null and versionId != ''">and flowFormBtnPerm.version_id = #{versionId}</if>
+            <if test="flowCode != null and flowCode != ''">and flowFormBtnPerm.flow_code = #{flowCode}</if>
+            <if test="version != null">and flowFormBtnPerm.version = #{version}</if>
+            <if test="nodeCode != null and nodeCode != ''">and flowFormBtnPerm.node_code = #{nodeCode}</if>
+            <if test="btnCode != null and btnCode != ''">and flowFormBtnPerm.btn_code = #{btnCode}</if>
+        </where>
+        order by flowFormBtnPerm.node_code asc, flowFormBtnPerm.sort asc
+    </select>
+
+</mapper>

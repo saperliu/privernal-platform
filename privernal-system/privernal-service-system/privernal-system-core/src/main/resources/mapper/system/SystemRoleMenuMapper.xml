@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemRoleMenuMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemRoleMenu" id="SystemRoleMenuResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="roleId"    column="role_id"    />
+        <result property="appId"    column="app_id"    />
+        <result property="menuId"    column="menu_id"    />
+        <result property="permission"    column="permission"    />
+        <result property="dataScope"    column="data_scope"    />
+    </resultMap>
+
+    <sql id="selectSystemRoleMenuVo">
+        select tenant_id, revision, created_by, created_time, updated_by, updated_time, deleted_flag, deleted_by, deleted_time, id, remark, role_id, menu_id,app_id, permission, data_scope from system_role_menu as roleMenu
+    </sql>
+
+    <select id="selectSystemRoleMenuList" parameterType="com.privernal.system.filter.SystemRoleMenuFilterDTO" resultMap="SystemRoleMenuResult">
+        <include refid="selectSystemRoleMenuVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="remark != null  and remark != ''"> and remark = #{remark}</if>
+            <if test="roleId != null  and roleId != ''"> and role_id = #{roleId}</if>
+            <if test="appId != null  and appId != ''"> and app_id = #{appId}</if>
+            <if test="menuId != null  and menuId != ''"> and menu_id = #{menuId}</if>
+            <if test="permission != null  and permission != ''"> and permission = #{permission}</if>
+            <if test="dataScope != null  and dataScope != ''"> and data_scope = #{dataScope}</if>
+        </where>
+    </select>
+
+
+    <delete id="deleteByOrganizationAndMenu">
+        delete rolem from system_role_menu as rolem
+        LEFT JOIN  system_role as role1 on rolem.role_id = role1.id
+        where  rolem.app_id = #{appId}  and role1.organization_id = #{organizationId}  and rolem.menu_id in (
+        <foreach collection="menuIds" item="id" separator=",">
+            #{id}
+        </foreach>
+        )
+    </delete>
+
+    <delete id="deleteAllRoleMenuByMenuId">
+        delete rolem from system_role_menu as rolem
+        where  rolem.app_id = #{appId} and rolem.menu_id in (
+        <foreach collection="menuIds" item="id" separator=",">
+            #{id}
+        </foreach>
+        )
+    </delete>
+
+
+    <delete id="deleteAllRoleMenuByRoleKeyAndMenuId">
+        delete rolem from system_role_menu as rolem
+        LEFT JOIN  system_role as role1 on rolem.role_id = role1.id
+        where  role1.role_key = #{roleKey} and rolem.menu_id in (
+        <foreach collection="menuIds" item="id" separator=",">
+            #{id}
+        </foreach>
+        )
+    </delete>
+
+</mapper>

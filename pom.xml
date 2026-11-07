@@ -1,0 +1,948 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.privernal</groupId>
+    <artifactId>privernal-platform</artifactId>
+    <version>${revision}</version>
+    <packaging>pom</packaging>
+
+    <name>${project.artifactId}</name>
+    <description>春祈平台服务端：动态表单、工作流、多组织数据权限</description>
+    <!-- ⚠️ 发布前把 CHANGE-ME 替换为实际托管组织 -->
+    <url>https://github.com/saperliu/privernal-platform</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+            <comments>第三方依赖各自的许可见 NOTICE.md，不受本许可证影响。</comments>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>saperliu</id>
+            <name>saperliu</name>
+        </developer>
+    </developers>
+
+    <scm>
+        <url>https://github.com/saperliu/privernal-platform</url>
+        <connection>scm:git:https://github.com/saperliu/privernal-platform.git</connection>
+        <developerConnection>scm:git:git@github.com:saperliu/privernal-platform.git</developerConnection>
+    </scm>
+
+    <issueManagement>
+        <system>GitHub Issues</system>
+        <url>https://github.com/saperliu/privernal-platform/issues</url>
+    </issueManagement>
+
+
+    <properties>
+        <revision>1.0.0-SNAPSHOT</revision>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+
+        <!-- Spring 主要框架  -->
+        <spring-boot.version>3.5.4</spring-boot.version>
+
+        <!-- IP 归属地离线库（xdb 数据文件由部署方自备，不随仓库分发） -->
+        <ip2region.version>2.7.0</ip2region.version>
+
+        <!--数据库-->
+        <mybatis-plus.version>3.5.12</mybatis-plus.version>
+
+        <!--工作流引擎-->
+        <warm-flow.version>1.8.9</warm-flow.version>
+
+        <druid.version>1.2.18</druid.version>
+        <pagehelper.boot.version>2.1.0</pagehelper.boot.version>
+
+        <dynamic-ds.version>4.3.1</dynamic-ds.version>
+
+        <shardingsphere.version>5.4.0</shardingsphere.version>
+
+        <persistence.version>3.1.0</persistence.version>
+
+        <!--SQL Server-->
+        <mssql.version>12.10.0.jre11</mssql.version>
+
+        <!--SQLite（平台主库可切换为本地单文件库，见 application-local.yaml datasource.master）-->
+        <sqlite.version>3.53.2.0</sqlite.version>
+
+        <!--权限验证框架-->
+        <sa-token.version>1.45.0</sa-token.version>
+
+        <!--监控依赖-->
+
+        <!--验证码-->
+        <kaptcha.version>2.3.3</kaptcha.version>
+
+        <!--  在线文档   -->
+        <springdoc.version>2.8.17</springdoc.version>
+
+        <!--上传文件-->
+        <minio.version>8.2.2</minio.version>
+        <aliyun-sdk-oss.version>3.10.2</aliyun-sdk-oss.version>
+
+        <!--Excel 处理-->
+        <poi.version>4.1.2</poi.version>
+
+        <!--  消息中间件 -->
+        <rocketmq-spring.version>2.3.0</rocketmq-spring.version>
+        <rocketmq.version>5.2.0</rocketmq.version>
+        <rocketmq-log.version>5.0.0</rocketmq-log.version>
+
+
+        <!-- 缓存 -->
+        <redisson.version>3.23.2</redisson.version>
+        <!-- 服务保障相关 -->
+        <lock4j.version>2.2.7</lock4j.version>
+        <resilience4j.version>2.3.0</resilience4j.version>
+
+        <!-- 二维码 -->
+        <zxing.version>3.5.3</zxing.version>
+        <!--   第三方授权登录     -->
+        <justauth.version>1.16.7</justauth.version>
+        <justauth.springboot.version>1.4.0</justauth.springboot.version>
+        <okhttp.version>4.12.0</okhttp.version>
+        <dingtalk.version>2.1.90</dingtalk.version>
+        <tea.version>1.3.2</tea.version>
+        <tea-openapi.version>0.3.6</tea-openapi.version>
+        <tea-util.version>0.2.23</tea-util.version>
+        <stream-version.version>1.3.7</stream-version.version>
+        <dingtalk-service.version>2.0.0</dingtalk-service.version>
+
+        <!--   苹果登录验证-->
+        <jjwt.version>0.11.5</jjwt.version>
+        <auth0-jwt.version>4.4.0</auth0-jwt.version>
+        <auth0-jwk.version>0.22.0</auth0-jwk.version>
+
+        <!--   APP消息推送-->
+        <push.version>3.13.12</push.version>
+        <push-core.version>4.6.3</push-core.version>
+
+        <!--   短信-->
+        <ali-sms.version>2.0.23</ali-sms.version>
+
+        <!--    socketio    -->
+        <netty-socketio.version>2.0.9</netty-socketio.version>
+        <!-- 工具类相关 -->
+        <ip2region.version>2.7.0</ip2region.version>
+        <commons.io.version>2.20.0</commons.io.version>
+        <fastjson.version>2.0.58</fastjson.version>
+        <netty.version>4.1.108.Final</netty.version>
+        <guava.version>33.4.8-jre</guava.version>
+        <bitwalker.version>1.21</bitwalker.version>
+
+        <transmittable-thread-local.version>2.14.5</transmittable-thread-local.version>
+        <lombok.version>1.18.38</lombok.version>
+        <hutool.version>5.8.47</hutool.version>
+         <!--        动态编码-->
+        <groovy.version>4.0.28</groovy.version>
+        <graal-sdk.version>24.2.2</graal-sdk.version>
+    </properties>
+
+
+    <modules>
+        <module>privernal-framework</module>
+        <module>privernal-server</module>
+        <module>privernal-system</module>
+    </modules>
+
+    <!-- 依赖声明 -->
+    <dependencyManagement>
+
+          <dependencies>
+            <dependency>
+                <groupId>org.lionsoul</groupId>
+                <artifactId>ip2region</artifactId>
+                <version>${ip2region.version}</version>
+            </dependency>
+
+              <!-- SpringBoot 依赖配置 -->
+              <dependency>
+                  <groupId>org.springframework.boot</groupId>
+                  <artifactId>spring-boot-dependencies</artifactId>
+                  <version>${spring-boot.version}</version>
+                  <type>pom</type>
+                  <scope>import</scope>
+              </dependency>
+
+              <!--  SpringBoot 监控客户端 -->
+
+              <!--数据源-->
+              <dependency>
+                  <groupId>org.apache.shardingsphere</groupId>
+                  <artifactId>shardingsphere-jdbc-core</artifactId>
+                  <version>${shardingsphere.version}</version>
+              </dependency>
+              <dependency>
+                  <groupId>org.apache.shardingsphere</groupId>
+                  <artifactId>shardingsphere-cluster-mode-repository-nacos</artifactId>
+                  <version>${shardingsphere.version}</version>
+              </dependency>
+
+
+              <dependency>
+                  <groupId>jakarta.persistence</groupId>
+                  <artifactId>jakarta.persistence-api</artifactId>
+                  <version>${persistence.version}</version>
+              </dependency>
+
+
+              <!-- Mybatis 依赖配置 -->
+              <dependency>
+                  <groupId>com.baomidou</groupId>
+                  <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+                  <version>${mybatis-plus.version}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.baomidou</groupId>
+                  <artifactId>mybatis-plus-extension</artifactId>
+                  <version>${mybatis-plus.version}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.baomidou</groupId>
+                  <artifactId>mybatis-plus-jsqlparser</artifactId>
+                  <version>${mybatis-plus.version}</version>
+              </dependency>
+
+
+              <dependency>
+                  <groupId>com.alibaba</groupId>
+                  <artifactId>druid</artifactId>
+                  <version>${druid.version}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.microsoft.sqlserver</groupId>
+                  <artifactId>mssql-jdbc</artifactId>
+                  <version>${mssql.version}</version>
+              </dependency>
+
+              <!--    SQLite -->
+              <dependency>
+                  <groupId>org.xerial</groupId>
+                  <artifactId>sqlite-jdbc</artifactId>
+                  <version>${sqlite.version}</version>
+              </dependency>
+
+              <!--    Dynamic DataSource -->
+              <dependency>
+                  <groupId>com.baomidou</groupId>
+                  <artifactId>dynamic-datasource-spring-boot3-starter</artifactId>
+                  <version>${dynamic-ds.version}</version>
+              </dependency>
+              <!-- pagehelper 分页插件 -->
+              <dependency>
+                  <groupId>com.github.pagehelper</groupId>
+                  <artifactId>pagehelper-spring-boot-starter</artifactId>
+                  <version>${pagehelper.boot.version}</version>
+                  <exclusions>
+                      <!--                    排除后，本地启动缺少文件 -->
+                      <!--                    <exclusion>-->
+                      <!--                        <groupId>org.mybatis</groupId>-->
+                      <!--                        <artifactId>mybatis</artifactId>-->
+                      <!--                    </exclusion>-->
+                      <!--                    <exclusion>-->
+                      <!--                        <groupId>org.mybatis</groupId>-->
+                      <!--                        <artifactId>mybatis-spring</artifactId>-->
+                      <!--                    </exclusion>-->
+                      <exclusion>
+                          <groupId>com.github.jsqlparser</groupId>
+                          <artifactId>jsqlparser</artifactId>
+                      </exclusion>
+                  </exclusions>
+              </dependency>
+
+              <!-- Sa-Token 权限认证, 在线文档：http://sa-token.dev33.cn/ -->
+              <dependency>
+                  <groupId>cn.dev33</groupId>
+                  <artifactId>sa-token-spring-boot3-starter</artifactId>
+                  <version>${sa-token.version}</version>
+              </dependency>
+              <!-- Sa-Token 权限认证（Reactor响应式集成）, 在线文档：http://sa-token.dev33.cn/ -->
+              <!--            <dependency>-->
+              <!--                <groupId>cn.dev33</groupId>-->
+              <!--                <artifactId>sa-token-reactor-spring-boot3-starter</artifactId>-->
+              <!--                <version>${sa-token.version}</version>-->
+              <!--            </dependency>-->
+              <!-- Sa-Token 整合 Redis （使用 jackson 序列化方式） -->
+              <dependency>
+                  <groupId>cn.dev33</groupId>
+                  <artifactId>sa-token-redis-jackson</artifactId>
+                  <version>${sa-token.version}</version>
+              </dependency>
+
+              <!-- Sa-Token插件：权限缓存与业务缓存分离 -->
+              <dependency>
+                  <groupId>cn.dev33</groupId>
+                  <artifactId>sa-token-alone-redis</artifactId>
+                  <version>${sa-token.version}</version>
+              </dependency>
+
+
+              <!-- 在线文档 依赖配置 -->
+
+              <dependency>
+                  <groupId>org.springdoc</groupId>
+                  <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                  <version>${springdoc.version}</version>
+              </dependency>
+
+
+              <!-- 验证码 -->
+              <dependency>
+                  <groupId>pro.fessional</groupId>
+                  <artifactId>kaptcha</artifactId>
+                  <version>${kaptcha.version}</version>
+              </dependency>
+
+              <!-- io常用工具类 -->
+              <dependency>
+                  <groupId>commons-io</groupId>
+                  <artifactId>commons-io</artifactId>
+                  <version>${commons.io.version}</version>
+              </dependency>
+
+              <!-- excel工具 -->
+              <dependency>
+                  <groupId>org.apache.poi</groupId>
+                  <artifactId>poi-ooxml</artifactId>
+                  <version>${poi.version}</version>
+              </dependency>
+
+              <!-- JSON 解析器和生成器 -->
+              <dependency>
+                  <groupId>com.alibaba.fastjson2</groupId>
+                  <artifactId>fastjson2</artifactId>
+                  <version>${fastjson.version}</version>
+              </dependency>
+
+
+              <!-- 排除掉Log4j2的依赖 -->
+              <dependency>
+                  <groupId>org.springframework.boot</groupId>
+                  <artifactId>spring-boot-starter-logging</artifactId>
+                  <version>${spring-boot.version}</version>
+                  <exclusions>
+                      <exclusion>
+                          <groupId>org.apache.logging.log4j</groupId>
+                          <artifactId>log4j-api</artifactId>
+                      </exclusion>
+                      <exclusion>
+                          <groupId>org.apache.logging.log4j</groupId>
+                          <artifactId>log4j-to-slf4j</artifactId>
+                      </exclusion>
+                  </exclusions>
+              </dependency>
+              <!-- IP解析出国家、具体地址、网络服务商等相关信息 -->
+              <!--            <dependency>-->
+              <!--                <groupId>org.lionsoul</groupId>-->
+              <!--                <artifactId>ip2region</artifactId>-->
+              <!--                <version>${ip2region.version}</version>-->
+              <!--            </dependency>-->
+              <!--            <dependency>-->
+              <!--                <groupId>org.lionsoul</groupId>-->
+              <!--                <artifactId>ip2region</artifactId>-->
+              <!--                <version>2.6.5</version>-->
+              <!--            </dependency>-->
+              <!-- lombok  依赖配置 -->
+              <dependency>
+                  <groupId>org.projectlombok</groupId>
+                  <artifactId>lombok</artifactId>
+                  <version>${lombok.version}</version>
+                  <scope>provided</scope>
+              </dependency>
+
+              <!--各种小工具集合-->
+              <dependency>
+                  <groupId>cn.hutool</groupId>
+                  <artifactId>hutool-all</artifactId>
+                  <version>${hutool.version}</version>
+              </dependency>
+
+              <!-- 钉版 hutool-core：justauth-spring-boot-starter 传递引入 5.6.5，与 hutool-all 同库不同版本，
+                   5.6.5 排前时 ObjectUtil 缺 defaultIfNull(Object,Supplier) 导致 JSONObject 初始化即崩
+                   （应用启动失败：An attempt was made to call a method that does not exist） -->
+              <dependency>
+                  <groupId>cn.hutool</groupId>
+                  <artifactId>hutool-core</artifactId>
+                  <version>${hutool.version}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.google.guava</groupId>
+                  <artifactId>guava</artifactId>
+                  <version>${guava.version}</version>
+              </dependency>
+
+              <!--数据缓存工具-->
+              <!--汉字拼音-->
+
+              <!-- 阿里云保存文件 -->
+              <dependency>
+                  <groupId>com.aliyun.oss</groupId>
+                  <artifactId>aliyun-sdk-oss</artifactId>
+                  <version>${aliyun-sdk-oss.version}</version>
+              </dependency>
+              <!-- Minio -->
+              <dependency>
+                  <groupId>io.minio</groupId>
+                  <artifactId>minio</artifactId>
+                  <version>${minio.version}</version>
+              </dependency>
+
+              <!-- rocketmq spring  -->
+              <dependency>
+                  <groupId>org.apache.rocketmq</groupId>
+                  <artifactId>rocketmq-spring-boot-starter</artifactId>
+                  <version>${rocketmq-spring.version}</version>
+              </dependency>
+              <dependency>
+                  <groupId>org.apache.rocketmq</groupId>
+                  <artifactId>rocketmq-client</artifactId>
+                  <version>${rocketmq.version}</version>
+                  <exclusions>
+                      <exclusion>
+                          <groupId>org.slf4j</groupId>
+                          <artifactId>slf4j-api</artifactId>
+                      </exclusion>
+                  </exclusions>
+              </dependency>
+              <dependency>
+                  <groupId>org.apache.rocketmq</groupId>
+                  <artifactId>rocketmq-acl</artifactId>
+                  <version>${rocketmq.version}</version>
+                  <exclusions>
+                      <exclusion>
+                          <groupId>org.apache.tomcat</groupId>
+                          <artifactId>annotations-api</artifactId>
+                      </exclusion>
+                  </exclusions>
+              </dependency>
+              <dependency>
+                  <groupId>org.apache.rocketmq</groupId>
+                  <artifactId>rocketmq-logging</artifactId>
+                  <version>${rocketmq-log.version}</version>
+              </dependency>
+
+              <!--提供分布式锁、幂等、限流、熔断等等 -->
+              <dependency>
+                  <groupId>com.baomidou</groupId>
+                  <artifactId>lock4j-redisson-spring-boot-starter</artifactId>
+                  <version>${lock4j.version}</version>
+                  <exclusions>
+                      <exclusion>
+                          <artifactId>redisson-spring-boot-starter</artifactId>
+                          <groupId>org.redisson</groupId>
+                      </exclusion>
+                  </exclusions>
+              </dependency>
+              <dependency>
+                  <groupId>io.github.resilience4j</groupId>
+                  <artifactId>resilience4j-spring-boot3</artifactId>
+                  <version>${resilience4j.version}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>org.redisson</groupId>
+                  <artifactId>redisson</artifactId>
+                  <version>${redisson.version}</version>
+              </dependency>
+
+              <!--netty-->
+              <dependency>
+                  <groupId>io.netty</groupId>
+                  <artifactId>netty-all</artifactId>
+                  <version>${netty.version}</version>
+              </dependency>
+
+              <!-- 解析客户端操作系统、浏览器等 -->
+              <dependency>
+                  <groupId>eu.bitwalker</groupId>
+                  <artifactId>UserAgentUtils</artifactId>
+                  <version>${bitwalker.version}</version>
+              </dependency>
+
+              <!-- 二维码解析-->
+              <dependency>
+                  <groupId>com.google.zxing</groupId>
+                  <artifactId>core</artifactId>
+                  <version>${zxing.version}</version>
+              </dependency>
+
+              <!--第三方授权登录-->
+              <dependency>
+                  <groupId>me.zhyd.oauth</groupId>
+                  <artifactId>JustAuth</artifactId>
+                  <version>${justauth.version}</version>
+              </dependency>
+              <dependency>
+                  <groupId>com.xkcoding.justauth</groupId>
+                  <artifactId>justauth-spring-boot-starter</artifactId>
+                  <version>${justauth.springboot.version}</version>
+              </dependency>
+              <dependency>
+                  <groupId>com.squareup.okhttp3</groupId>
+                  <artifactId>okhttp</artifactId>
+                  <version>${okhttp.version}</version>
+              </dependency>
+
+              <!-- 解决 ThreadLocal 父子线程的传值问题 -->
+              <dependency>
+                  <groupId>com.alibaba</groupId>
+                  <artifactId>transmittable-thread-local</artifactId>
+                  <version>${transmittable-thread-local.version}</version>
+              </dependency>
+
+              <!--钉钉的数据同步-->
+              <dependency>
+                  <groupId>com.aliyun</groupId>
+                  <artifactId>dingtalk</artifactId>
+                  <version>${dingtalk.version}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.aliyun</groupId>
+                  <artifactId>tea</artifactId>
+                  <version>${tea.version}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.aliyun</groupId>
+                  <artifactId>tea-openapi</artifactId>
+                  <version>${tea-openapi.version}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.aliyun</groupId>
+                  <artifactId>tea-util</artifactId>
+                  <version>${tea-util.version}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.aliyun</groupId>
+                  <artifactId>alibaba-dingtalk-service-sdk</artifactId>
+                  <version>${dingtalk-service.version}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.dingtalk.open</groupId>
+                  <artifactId>app-stream-client</artifactId>
+                  <version>${stream-version.version}</version>
+              </dependency>
+
+              <!-- EMAS APP 消息推送 -->
+              <dependency>
+                  <groupId>com.aliyun</groupId>
+                  <artifactId>aliyun-java-sdk-push</artifactId>
+                  <version>${push.version}</version>
+              </dependency>
+              <dependency>
+                  <groupId>com.aliyun</groupId>
+                  <artifactId>aliyun-java-sdk-core</artifactId>
+                  <version>${push-core.version}</version>
+              </dependency>
+
+              <!--            动态表单的动态解析，groovy语法-->
+              <dependency>
+                  <groupId>org.apache.groovy</groupId>
+                  <artifactId>groovy-all</artifactId>
+                  <version>${groovy.version}</version>
+                  <type>pom</type>
+              </dependency>
+
+              <dependency>
+                  <groupId>org.apache.groovy</groupId>
+                  <artifactId>groovy-jsr223</artifactId>
+                  <version>${groovy.version}</version>
+              </dependency>
+
+
+              <dependency>
+                  <groupId>org.graalvm.sdk</groupId>
+                  <artifactId>graal-sdk</artifactId>
+                  <version>${graal-sdk.version}</version> <!-- 或者选择适合你项目的版本 -->
+              </dependency>
+
+              <dependency>
+                  <groupId>com.aliyun</groupId>
+                  <artifactId>alibabacloud-dysmsapi20170525</artifactId>
+                  <version>${ali-sms.version}</version>
+              </dependency>
+
+              <!--   jwt apple 登录使用-->
+              <dependency>
+                  <groupId>io.jsonwebtoken</groupId>
+                  <artifactId>jjwt-api</artifactId>
+                  <version>${jjwt.version}</version>
+              </dependency>
+              <dependency>
+                  <groupId>io.jsonwebtoken</groupId>
+                  <artifactId>jjwt-impl</artifactId>
+                  <version>${jjwt.version}</version>
+                  <scope>runtime</scope>
+              </dependency>
+              <dependency>
+                  <groupId>io.jsonwebtoken</groupId>
+                  <artifactId>jjwt-jackson</artifactId>
+                  <version>${jjwt.version}</version>
+                  <scope>runtime</scope>
+              </dependency>
+              <dependency>
+                  <groupId>com.auth0</groupId>
+                  <artifactId>java-jwt</artifactId>
+                  <version>${auth0-jwt.version}</version>
+              </dependency>
+              <dependency>
+                  <groupId>com.auth0</groupId>
+                  <artifactId>jwks-rsa</artifactId>
+                  <version>${auth0-jwk.version}</version>
+              </dependency>
+
+              <!-- socketio 应用-->
+              <dependency>
+                  <groupId>com.corundumstudio.socketio</groupId>
+                  <artifactId>netty-socketio</artifactId>
+                  <version>${netty-socketio.version}</version>
+              </dependency>
+
+            <!-- 核心模块 -->
+            <dependency>
+                <groupId>com.privernal</groupId>
+                <artifactId>privernal-common-core</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- 接口模块 -->
+            <dependency>
+                <groupId>com.privernal</groupId>
+                <artifactId>privernal-common-web</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- 安全模块 -->
+            <dependency>
+                <groupId>com.privernal</groupId>
+                <artifactId>privernal-common-security</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- 权限范围 -->
+            <dependency>
+                <groupId>com.privernal</groupId>
+                <artifactId>privernal-common-datascope</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- 多数据源 -->
+            <dependency>
+                <groupId>com.privernal</groupId>
+                <artifactId>privernal-common-datasource</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- 日志记录 -->
+            <dependency>
+                <groupId>com.privernal</groupId>
+                <artifactId>privernal-common-log</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- 缓存服务 -->
+            <dependency>
+                <groupId>com.privernal</groupId>
+                <artifactId>privernal-common-redis</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- 延迟队列服务 -->
+            <dependency>
+                <groupId>com.privernal</groupId>
+                <artifactId>privernal-common-redisson</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- WEB配置模块 -->
+            <dependency>
+                <groupId>com.privernal</groupId>
+                <artifactId>privernal-common-mybatis</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- 消息服务 -->
+            <dependency>
+                <groupId>com.privernal</groupId>
+                <artifactId>privernal-common-rocketmq</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- 系统接口 -->
+            <dependency>
+                <groupId>com.privernal</groupId>
+                <artifactId>privernal-system-api</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+           <!--  文件接口  -->
+              <dependency>
+                  <groupId>com.privernal</groupId>
+                  <artifactId>privernal-file-api</artifactId>
+                  <version>${revision}</version>
+              </dependency>
+
+            <!-- Xvri Api Flow（工作流，基于 warm-flow，替代 wfs） -->
+            <dependency>
+                <groupId>com.privernal</groupId>
+                <artifactId>privernal-flow-api</artifactId>
+                <version>${revision}</version>
+            </dependency>
+
+            <!-- warm-flow 工作流引擎 -->
+            <dependency>
+                <groupId>org.dromara.warm</groupId>
+                <artifactId>warm-flow-mybatis-plus-sb3-starter</artifactId>
+                <version>${warm-flow.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.dromara.warm</groupId>
+                <artifactId>warm-flow-plugin-ui-sb-web</artifactId>
+                <version>${warm-flow.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.dromara.warm</groupId>
+                <artifactId>warm-flow-plugin-vue3-ui</artifactId>
+                <version>${warm-flow.version}</version>
+            </dependency>
+
+
+              <dependency>
+                  <groupId>com.privernal</groupId>
+                  <artifactId>privernal-message-api</artifactId>
+                  <version>${revision}</version>
+              </dependency>
+
+
+                <!--所有 core 模块-->
+              <dependency>
+                  <groupId>com.privernal</groupId>
+                  <artifactId>privernal-system-core</artifactId>
+                  <version>${revision}</version>
+              </dependency>
+              <dependency>
+                  <groupId>com.privernal</groupId>
+                  <artifactId>privernal-file-core</artifactId>
+                  <version>${revision}</version>
+              </dependency>
+              <dependency>
+                  <groupId>com.privernal</groupId>
+                  <artifactId>privernal-flow-core</artifactId>
+                  <version>${revision}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.privernal</groupId>
+                  <artifactId>privernal-message-core</artifactId>
+                  <version>${revision}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.privernal</groupId>
+                  <artifactId>privernal-dynamic-api</artifactId>
+                  <version>${revision}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.privernal</groupId>
+                  <artifactId>privernal-dynamic-core</artifactId>
+                  <version>${revision}</version>
+              </dependency>
+
+
+              <dependency>
+                  <groupId>com.privernal</groupId>
+                  <artifactId>privernal-job-api</artifactId>
+                  <version>${revision}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.privernal</groupId>
+                  <artifactId>privernal-job-core</artifactId>
+                  <version>${revision}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.privernal</groupId>
+                  <artifactId>privernal-common-dingtalk</artifactId>
+                  <version>${revision}</version>
+              </dependency>
+
+              <dependency>
+                  <groupId>com.privernal</groupId>
+                  <artifactId>privernal-common-wx</artifactId>
+                  <version>${revision}</version>
+              </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-deploy-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <artifactId>maven-enforcer-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <artifactId>maven-source-plugin</artifactId>
+            </plugin>
+        </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.13.0</version>
+                    <configuration>
+                        <release>${java.version}</release>
+                        <!-- 字符集编码 -->
+                        <encoding>UTF-8</encoding>
+                        <!-- 保留方法参数名：Spring 6.1 起按名发现器已移除，@DS("#database")/@RequestParam
+                             等按名解析强依赖 -parameters；缺省时 @DS 静默回落 master（业务库路由失效，
+                             2026-10-04 §13 用例 8b 实测发现，javap 证实产物无 MethodParameters） -->
+                        <parameters>true</parameters>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                        </annotationProcessorPaths>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <!-- 2.22.2 是本地/离线仓库里同时具备 surefire-junit-platform provider 的最低可用版本；
+                         联网后建议升到 3.x（需一并拉取 surefire-junit-platform） -->
+                    <version>2.22.2</version>
+                    <configuration>
+                        <!-- 同一模块的测试复用同一个 JVM，比每个测试类新建进程快 -->
+                        <forkCount>1</forkCount>
+                        <reuseForks>true</reuseForks>
+                        <!-- 防止测试输出里的中文乱码 -->
+                        <argLine>-Dfile.encoding=UTF-8</argLine>
+                        <excludes>
+                            <exclude>**/*BaseTest.java</exclude>
+                            <exclude>**/*RestTest.java</exclude>
+                        </excludes>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>versions-maven-plugin</artifactId>
+                    <version>2.16.0</version>
+                    <configuration>
+                        <generateBackupPoms>false</generateBackupPoms>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>flatten-maven-plugin</artifactId>
+                    <version>1.2.1</version>
+                    <configuration>
+                        <!-- 避免IDE将 .flattened-pom.xml 自动识别为功能模块 -->
+                        <flattenedPomFilename>pom-xml-flattened</flattenedPomFilename>
+                        <updatePomFile>true</updatePomFile>
+                        <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>flatten</id>
+                            <phase>process-resources</phase>
+                            <goals>
+                                <goal>flatten</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>flatten.clean</id>
+                            <phase>clean</phase>
+                            <goals>
+                                <goal>clean</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-deploy-plugin</artifactId>
+                    <version>2.8.2</version>
+                </plugin>
+                <plugin>
+                    <groupId>io.fabric8</groupId>
+                    <artifactId>docker-maven-plugin</artifactId>
+                    <version>0.43.4</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>3.1.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>3.2.1</version>
+                    <executions>
+                        <execution>
+                            <id>attach-sources</id>
+                            <goals>
+                                <goal>jar</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+<!--                检查同一个包是否依赖了多个版本 -->
+<!--                <plugin>-->
+<!--                    <groupId>org.apache.maven.plugins</groupId>-->
+<!--                    <artifactId>maven-enforcer-plugin</artifactId>-->
+<!--                    <version>1.4.1</version>-->
+<!--                    <executions>-->
+<!--                        <execution>-->
+<!--                            <id>enforce</id>-->
+<!--                            <configuration>-->
+<!--                                <rules>-->
+<!--                                    <dependencyConvergence/>-->
+<!--                                </rules>-->
+<!--                            </configuration>-->
+<!--                            <goals>-->
+<!--                                <goal>enforce</goal>-->
+<!--                            </goals>-->
+<!--                        </execution>-->
+<!--                    </executions>-->
+<!--                </plugin>-->
+            </plugins>
+        </pluginManagement>
+    </build>
+    <!-- 制品发布目标仓库不写进 pom（避免把私有仓库地址与其口令一起泄露）。
+         需要 mvn deploy 时，在本地 ~/.m2/settings.xml 里配置 <server> 凭据，
+         并用 -DaltDeploymentRepository=<id>::default::<url> 指定目标。 -->
+</project>

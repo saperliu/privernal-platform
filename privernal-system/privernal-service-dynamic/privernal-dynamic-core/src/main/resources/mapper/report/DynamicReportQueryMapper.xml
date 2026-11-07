@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.dynamic.report.mapper.DynamicReportQueryMapper">
+
+    <!--
+      聚合 SQL 由 DynamicReportQueryService 构建后整体传入：
+      - 标识符（表/列）已过标识符白名单 + 数据集列快照双重校验
+      - 值一律 #{paramMap.pN} 绑定：${querySql} 先文本替换，随后 MyBatis 正常解析
+        其中的 #{} 占位并从 paramMap 取值，最终以 PreparedStatement 参数执行
+      - 行级数据范围由 DataPermissionInterceptor 按查看者追加（方案A）
+    -->
+    <select id="aggregate" resultType="java.util.HashMap">
+        ${querySql}
+    </select>
+
+    <select id="lookupDisplay" resultType="java.util.HashMap">
+        ${querySql}
+    </select>
+</mapper>

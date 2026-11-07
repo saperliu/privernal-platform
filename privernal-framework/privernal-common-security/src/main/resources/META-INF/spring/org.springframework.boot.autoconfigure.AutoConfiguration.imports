@@ -1,0 +1,4 @@
+com.privernal.common.security.service.TokenService
+com.privernal.common.security.aspect.PreAuthorizeAspect
+com.privernal.common.security.aspect.ServiceRequestAspect
+com.privernal.common.security.handler.GlobalExceptionHandler

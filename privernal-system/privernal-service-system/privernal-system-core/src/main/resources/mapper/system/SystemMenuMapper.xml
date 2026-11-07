@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemMenuMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemMenu" id="SystemMenuResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="menuName"    column="menu_name"    />
+        <result property="menuCode"    column="menu_code"    />
+        <result property="orderNum"    column="order_num"    />
+        <result property="path"    column="path"    />
+        <result property="component"    column="component"    />
+        <result property="params"    column="params"    />
+        <result property="isFrame"    column="is_frame"    />
+        <result property="isCache"    column="is_cache"    />
+        <result property="menuType"    column="menu_type"    />
+        <result property="visible"    column="visible"    />
+        <result property="status"    column="status"    />
+        <result property="permission"    column="permission"    />
+        <result property="parentId"    column="parent_id"    />
+        <result property="mustMenu"    column="must_menu"    />
+        <result property="icon"    column="icon"    />
+        <result property="appMenu"    column="app_menu"    />
+    </resultMap>
+
+    <sql id="selectSystemMenuVo">
+        select menu.tenant_id, menu.revision, menu.created_by, menu.created_time, menu.updated_by, menu.updated_time, menu.deleted_flag, menu.deleted_by, menu.deleted_time,
+               menu.organization_id, menu.id, menu.remark, menu.menu_name, menu.menu_code, menu.order_num, menu.path, menu.component, menu.params, menu.is_frame, menu.is_cache, menu.menu_type,
+               menu.visible, menu.status, menu.permission, menu.parent_id, menu.icon,menu.app_menu from system_menu as menu
+    </sql>
+
+    <select id="selectSystemMenuList" parameterType="com.privernal.system.filter.SystemMenuFilterDTO" resultMap="SystemMenuResult">
+        <include refid="selectSystemMenuVo"/>
+        <where>
+            menu.deleted_flag = 'N'
+            <if test="remark != null  and remark != ''"> and menu.remark = #{remark}</if>
+            <if test="menuName != null  and menuName != ''"> and menu.menu_name like concat('%', #{menuName}, '%')</if>
+            <if test="menuCode != null  and menuCode != ''"> and menu.menu_code = #{menuCode}</if>
+            <if test="orderNum != null "> and menu.order_num = #{orderNum}</if>
+            <if test="path != null  and path != ''"> and menu.path = #{path}</if>
+            <if test="component != null  and component != ''"> and menu.component = #{component}</if>
+            <if test="params != null  and params != ''"> and menu.params = #{params}</if>
+            <if test="isFrame != null "> and menu.is_frame = #{isFrame}</if>
+            <if test="isCache != null "> and menu.is_cache = #{isCache}</if>
+            <if test="menuType != null  and menuType != ''"> and menu.menu_type = #{menuType}</if>
+            <if test="visible != null "> and menu.visible = #{visible}</if>
+            <if test="status != null "> and menu.status = #{status}</if>
+            <if test="permission != null  and permission != ''"> and menu.permission = #{permission}</if>
+            <if test="parentId != null  and parentId != ''"> and menu.parent_id = #{parentId}</if>
+            <if test="icon != null  and icon != ''"> and menu.icon = #{icon}</if>
+            <if test="organizationId != null  and organizationId != ''"> and menu.organization_id = #{organizationId}</if>
+            <if test="menuTypes!=null and menuTypes.length>0">
+                and
+                <foreach collection="menuTypes" item="item" open="(" separator="or" close=")">
+                    menu.menu_type =  #{item}
+                </foreach>
+            </if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="or" close=")">
+                    (
+                    menu.menu_name like concat('%', #{item}, '%')
+                    or menu.menu_code like concat('%', #{item}, '%')
+                    or menu.remark like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by menu.order_num desc
+    </select>
+
+    <select id="selectMenuPermsByUserId" parameterType="String" resultType="String">
+        select distinct m.permission
+        from system_menu m
+                 left join system_organization_menu orgm on m.id = orgm.menu_id
+                 left join system_role_menu rm on m.id = rm.menu_id
+                 left join system_role_user ur on rm.role_id = ur.role_id
+                 left join system_role r on r.id = ur.role_id
+        where m.status = 1  and m.app_menu=0 and r.status = 1 and orgm.status=1
+          and  orgm.deleted_flag='N'   and r.deleted_flag='N' and m.deleted_flag ='N' and rm.deleted_flag ='N' and ur.deleted_flag ='N'
+          and ur.user_id = #{userId} and orgm.organization_id=#{organizationId} and r.organization_id=#{organizationId}
+    </select>
+
+    <select id="selectRoutersTreeByUserId" parameterType="String" resultMap="SystemMenuResult">
+        select distinct
+            menu.tenant_id, menu.revision, menu.created_by, menu.created_time, menu.updated_by, menu.updated_time, menu.deleted_flag,
+            menu.deleted_by, menu.deleted_time, menu.id, menu.remark, menu.menu_name, menu.menu_code, menu.order_num, menu.path, menu.component,
+        <choose>
+            <when test="_databaseId == 'mysql'">
+                ifnull(menu.permission, '') as permission,
+            </when>
+            <when test="_databaseId == 'sqlserver'">
+                ISNULL(menu.permission, '') as permission,
+            </when>
+        </choose>
+            menu.is_frame, menu.is_cache,
+            menu.menu_type, menu.visible, menu.status, menu.params,orgm.organization_id, menu.parent_id, menu.icon,menu.app_menu
+        from system_menu as menu
+                 left join system_organization_menu orgm on menu.id = orgm.menu_id
+                 left join system_role_menu rm on menu.id = rm.menu_id
+                 left join system_role_user ur on rm.role_id = ur.role_id
+                 left join system_role ro on ur.role_id = ro.id
+                 left join system_user_base u on ur.user_id = u.id
+        where u.id = #{userId} and orgm.organization_id =#{organizationId}  and menu.app_menu=0 and menu.visible=1 and orgm.status=1
+          and  orgm.deleted_flag='N' and menu.deleted_flag = 'N' and ro.deleted_flag = 'N' and rm.deleted_flag = 'N' and ur.deleted_flag = 'N' and u.deleted_flag = 'N'
+          and menu.menu_type in ('M', 'C') and menu.status = 1  AND ro.status = 1
+        order by menu.parent_id, menu.order_num desc
+    </select>
+
+    <select id="selectMenuButtonTreeByUserId" parameterType="String" resultMap="SystemMenuResult">
+        select distinct
+            menu.tenant_id, menu.revision, menu.created_by, menu.created_time, menu.updated_by, menu.updated_time, menu.deleted_flag,
+            menu.deleted_by, menu.deleted_time, menu.id, menu.remark, menu.menu_name, menu.menu_code, menu.order_num, menu.path, menu.component,
+        <choose>
+            <when test="_databaseId == 'mysql'">
+                ifnull(menu.permission, '') as permission,
+            </when>
+            <when test="_databaseId == 'sqlserver'">
+                ISNULL(menu.permission, '') as permission,
+            </when>
+        </choose>
+            menu.is_frame, menu.is_cache,
+            menu.menu_type, menu.visible, menu.status, menu.params,orgm.organization_id, menu.parent_id, menu.icon,menu.app_menu
+        from system_menu as menu
+                 left join system_organization_menu orgm on menu.id = orgm.menu_id
+                 left join system_role_menu rm on menu.id = rm.menu_id
+                 left join system_role_user ur on rm.role_id = ur.role_id
+                 left join system_role ro on ur.role_id = ro.id
+        where ur.user_id = #{userId} and orgm.organization_id =#{organizationId}  and menu.app_menu=0 and orgm.status=1
+          and  orgm.deleted_flag='N' and menu.status = 1 and menu.deleted_flag = 'N' AND ro.status = 1 and ro.deleted_flag = 'N' and rm.deleted_flag = 'N' and ur.deleted_flag = 'N'
+        order by menu.parent_id, menu.order_num desc
+    </select>
+
+    <select id="selectMenuAllByOrganizationId" parameterType="String" resultMap="SystemMenuResult">
+        select distinct
+            menu.tenant_id, menu.revision, menu.created_by, menu.created_time, menu.updated_by, menu.updated_time, menu.deleted_flag,
+            menu.deleted_by, menu.deleted_time, menu.id, menu.remark, menu.menu_name, menu.menu_code, menu.order_num, menu.path, menu.component,
+        <choose>
+            <when test="_databaseId == 'mysql'">
+                ifnull(menu.permission, '') as permission,
+            </when>
+            <when test="_databaseId == 'sqlserver'">
+                ISNULL(menu.permission, '') as permission,
+            </when>
+        </choose>
+            menu.is_frame, menu.is_cache,
+            menu.menu_type, menu.visible, menu.status, menu.params,menu.organization_id, menu.parent_id, menu.icon,menu.app_menu
+        from system_menu as menu
+                 left join system_organization_menu orgm on menu.id = orgm.menu_id
+        where orgm.organization_id = #{organizationId} and orgm.status=1
+          and  orgm.deleted_flag='N'  and menu.status = 1 and menu.deleted_flag = 'N' and menu.app_menu=0
+        order by menu.parent_id, menu.order_num desc
+    </select>
+
+
+    <select id="selectRoutersByOrganizationId" parameterType="String" resultMap="SystemMenuResult">
+        select distinct
+            menu.tenant_id, menu.revision, menu.created_by, menu.created_time, menu.updated_by, menu.updated_time, menu.deleted_flag,
+            menu.deleted_by, menu.deleted_time, menu.id, menu.remark, menu.menu_name, menu.menu_code, menu.order_num, menu.path, menu.component,
+        <choose>
+            <when test="_databaseId == 'mysql'">
+                ifnull(menu.permission, '') as permission,
+            </when>
+            <when test="_databaseId == 'sqlserver'">
+                ISNULL(menu.permission, '') as permission,
+            </when>
+        </choose>
+            menu.is_frame, menu.is_cache,
+            menu.menu_type, menu.visible, menu.status, menu.params,menu.organization_id, menu.parent_id, menu.icon,menu.app_menu
+        from system_menu as menu
+                 left join system_organization_menu orgm on menu.id = orgm.menu_id
+        where orgm.organization_id = #{organizationId} and orgm.status=1 and menu.visible=1 and  orgm.deleted_flag='N'  and menu.menu_type in ('M', 'C') and menu.status = 1 and menu.deleted_flag = 'N' and menu.app_menu=0
+        order by menu.parent_id, menu.order_num desc
+    </select>
+
+    <select id="getAuthAppMenuByUserId" parameterType="String" resultMap="SystemMenuResult">
+        select distinct
+            menu.tenant_id, menu.revision, menu.created_by, menu.created_time, menu.updated_by, menu.updated_time, menu.deleted_flag,
+            menu.deleted_by, menu.deleted_time, menu.id, menu.remark, menu.menu_name, menu.menu_code, menu.order_num, menu.path, menu.component,
+        <choose>
+            <when test="_databaseId == 'mysql'">
+                ifnull(menu.permission, '') as permission,
+            </when>
+            <when test="_databaseId == 'sqlserver'">
+                ISNULL(menu.permission, '') as permission,
+            </when>
+        </choose>
+            menu.is_frame, menu.is_cache,
+            menu.menu_type, menu.visible, menu.status, menu.params,orgm.organization_id, menu.parent_id, menu.icon,menu.app_menu
+        from system_menu as menu
+                 left join system_organization_menu orgm on menu.id = orgm.menu_id
+                 left join system_role_menu rm on menu.id = rm.menu_id
+                 left join system_role_user ur on rm.role_id = ur.role_id
+                 left join system_role ro on ur.role_id = ro.id
+                 left join system_user_base u on ur.user_id = u.id
+        where u.id = #{userId} and orgm.organization_id =#{organizationId} and menu.app_menu=1 and orgm.status=1
+          and  orgm.deleted_flag='N' and menu.menu_type = 'M' and menu.status = 1
+          and menu.deleted_flag = 'N' AND ro.status = 1 and ro.deleted_flag = 'N' and rm.deleted_flag = 'N' and ur.deleted_flag = 'N' and u.deleted_flag = 'N'
+        order by menu.parent_id, menu.order_num desc
+    </select>
+
+
+    <resultMap type="com.privernal.system.dto.SystemMenuDTO" id="SystemMenuDTOResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="menuName"    column="menu_name"    />
+        <result property="menuCode"    column="menu_code"    />
+        <result property="orderNum"    column="order_num"    />
+        <result property="path"    column="path"    />
+        <result property="component"    column="component"    />
+        <result property="params"    column="params"    />
+        <result property="isFrame"    column="is_frame"    />
+        <result property="isCache"    column="is_cache"    />
+        <result property="menuType"    column="menu_type"    />
+        <result property="visible"    column="visible"    />
+        <result property="status"    column="status"    />
+        <result property="permission"    column="permission"    />
+        <result property="parentId"    column="parent_id"    />
+        <result property="mustMenu"    column="must_menu"    />
+        <result property="visibleMenu"    column="visible_menu"    />
+        <result property="icon"    column="icon"    />
+        <result property="appMenu"    column="app_menu"    />
+    </resultMap>
+
+    <select id="selectMenuButtonTreeByUserIdAndAppId" parameterType="String" resultMap="SystemMenuDTOResult">
+        select distinct
+            appm.must_menu,
+            menu.id, menu.remark, menu.menu_name, menu.menu_code, menu.order_num, menu.path, menu.component,
+        <choose>
+            <when test="_databaseId == 'mysql'">
+                ifnull(menu.permission, '') as permission,
+            </when>
+            <when test="_databaseId == 'sqlserver'">
+                ISNULL(menu.permission, '') as permission,
+            </when>
+        </choose>
+            menu.is_frame, menu.is_cache,menu.icon,
+            menu.menu_type, menu.visible, menu.status, orgm.organization_id, menu.parent_id,menu.app_menu,appm.visible_menu
+        from system_menu as menu
+                 left join system_organization_menu orgm on menu.id = orgm.menu_id
+                 left join system_role_menu rm on menu.id = rm.menu_id
+                 left join system_role_user ur on rm.role_id = ur.role_id
+                 left join system_role ro on ur.role_id = ro.id
+                 left join system_app_menu appm on menu.id = appm.menu_id
+        <where>
+            orgm.organization_id =#{organizationId} and appm.app_id = #{appId} and menu.app_menu=0 and orgm.status=1
+             and  orgm.deleted_flag='N' and menu.status = 1 and menu.deleted_flag = 'N' AND ro.status = 1
+             and ro.deleted_flag = 'N' and rm.deleted_flag = 'N' and ur.deleted_flag = 'N' and appm.deleted_flag = 'N'
+            <if test="userId != null and userId != ''">
+                and ur.user_id = #{userId}
+            </if>
+        </where>
+        order by menu.parent_id, menu.order_num desc
+    </select>
+
+    <select id="selectMenuButtonTreeByOrganizationAndAppId" parameterType="String" resultMap="SystemMenuDTOResult">
+        select distinct
+            appm.must_menu,
+             menu.id, menu.remark, menu.menu_name, menu.menu_code, menu.order_num, menu.path, menu.component,
+        <choose>
+            <when test="_databaseId == 'mysql'">
+                ifnull(menu.permission, '') as permission,
+            </when>
+            <when test="_databaseId == 'sqlserver'">
+                ISNULL(menu.permission, '') as permission,
+            </when>
+        </choose>
+             menu.is_frame, menu.is_cache,menu.icon,
+            menu.menu_type, menu.visible, menu.status, menu.parent_id, menu.app_menu,appm.visible_menu
+        from system_menu as menu
+                 left join system_organization_menu orgm on menu.id = orgm.menu_id
+                 left join system_app_menu appm on menu.id = appm.menu_id
+        where orgm.organization_id = #{organizationId} and appm.app_id = #{appId} and menu.app_menu=0 and orgm.status=1
+          and  orgm.deleted_flag='N'  and menu.status = 1 and menu.deleted_flag = 'N' and menu.app_menu=0 and appm.deleted_flag = 'N'
+        order by menu.parent_id, menu.order_num desc
+    </select>
+
+</mapper>

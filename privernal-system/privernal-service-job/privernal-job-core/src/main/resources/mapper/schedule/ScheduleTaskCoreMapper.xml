@@ -1,0 +1,474 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.job.mapper.ScheduleTaskCoreMapper">
+
+    <!-- 内核 SQL 全部显式条件；deleted_flag 一律显式，不依赖任何自动改写 -->
+    <!-- 方言口径：时间/幂等插入/删除上限等差异统一走 privernal.dialect 片段（databaseId 成对），
+         结构性差异（INSERT IGNORE vs ON CONFLICT、DELETE LIMIT vs id IN 子查询）写成
+         databaseId 成对语句；mysql/sqlite 变体都必须维护，改一处必查另一处 -->
+
+    <update id="tryAcquireSchedulerLock">
+        UPDATE system_schedule_lock
+        SET holder = #{instanceId}, lease_until = <include refid="privernal.dialect.leasePlus30"/>, version = version + 1
+        WHERE lock_key = 'scheduler' AND (holder = #{instanceId} OR lease_until &lt; <include refid="privernal.dialect.now3"/>)
+    </update>
+
+    <update id="renewSchedulerLock">
+        UPDATE system_schedule_lock
+        SET lease_until = <include refid="privernal.dialect.leasePlus30"/>, version = version + 1
+        WHERE lock_key = 'scheduler' AND holder = #{instanceId}
+    </update>
+
+    <select id="scanReady" resultType="com.privernal.job.domain.SystemScheduleTask">
+        SELECT id, organization_id, app_id, source, biz_key, trigger_type, cron_expr, interval_seconds,
+               period_seconds, jitter_seconds, misfire_policy, misfire_window_seconds, concurrent_policy,
+               timeout_seconds, max_retry, action_type, action_config, biz_context, database_name, callback_url,
+               status, next_fire_time, pending_next_fire_time, version, current_attempt
+        FROM system_schedule_task
+        WHERE deleted_flag = 'N' AND status = 'READY'
+          AND next_fire_time &lt;= <include refid="privernal.dialect.now3"/>
+        ORDER BY next_fire_time ASC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countReadyDue" resultType="long">
+        SELECT COUNT(*) FROM system_schedule_task
+        WHERE deleted_flag = 'N' AND status = 'READY' AND next_fire_time &lt;= <include refid="privernal.dialect.now3"/>
+    </select>
+
+    <select id="countReadyStale" resultType="long">
+        SELECT COUNT(*) FROM system_schedule_task
+        WHERE deleted_flag = 'N' AND status = 'READY' AND next_fire_time &lt; <include refid="privernal.dialect.now3Minus60Seconds"/>
+    </select>
+
+    <select id="countHangingTriggers" resultType="long">
+        SELECT COUNT(*) FROM system_schedule_task
+        WHERE deleted_flag = 'N' AND status = 'TRIGGERED' AND lease_until &lt; <include refid="privernal.dialect.now3"/>
+    </select>
+
+    <select id="countReadyInWindow" resultType="long">
+        SELECT COUNT(*) FROM system_schedule_task
+        WHERE deleted_flag = 'N' AND status = 'READY'
+          AND next_fire_time &gt;= #{start} AND next_fire_time &lt; #{end}
+    </select>
+
+    <select id="selectActiveByBizKey" resultType="com.privernal.job.domain.SystemScheduleTask">
+        SELECT * FROM system_schedule_task
+        WHERE deleted_flag = 'N' AND organization_id = #{orgId} AND source = #{source} AND biz_key = #{bizKey}
+        LIMIT 1
+    </select>
+
+    <!-- P1-2：应用包导入判重按 (app_id, task_code)——biz_key 是环境内产物（含组织前缀/时间戳），
+         跨环境只有 task_code 稳定，与 uk_code 唯一键同口径 -->
+    <select id="selectActiveByTaskCode" resultType="com.privernal.job.domain.SystemScheduleTask">
+        SELECT * FROM system_schedule_task
+        WHERE deleted_flag = 'N' AND app_id = #{appId} AND task_code = #{taskCode}
+        LIMIT 1
+    </select>
+
+    <select id="selectActiveByBizPrefix" resultType="com.privernal.job.domain.SystemScheduleTask">
+        SELECT id, biz_key, status FROM system_schedule_task
+        WHERE deleted_flag = 'N' AND organization_id = #{orgId} AND source = #{source}
+          AND biz_key LIKE CONCAT(#{bizPrefix}, '%')
+    </select>
+
+    <select id="selectById" resultType="com.privernal.job.domain.SystemScheduleTask">
+        SELECT * FROM system_schedule_task WHERE id = #{id} LIMIT 1
+    </select>
+
+    <update id="casTrigger">
+        UPDATE system_schedule_task
+        SET status = 'TRIGGERED', owner_instance = #{instanceId}, lease_until = <include refid="privernal.dialect.leasePlus60"/>,
+            last_fire_time = next_fire_time, updated_time = <include refid="privernal.dialect.now3"/>
+            <if test="pendingNextFireTime != null">, pending_next_fire_time = #{pendingNextFireTime}</if>
+        WHERE id = #{id} AND deleted_flag = 'N' AND status = 'READY' AND version = #{version}
+    </update>
+
+    <!-- P1-3：显式 INSERT，唯一键冲突由调用方按 DuplicateKeyException 显式判定（错误码表
+         见 privernal-server 的 sql-error-codes.xml，MySQL 1062 / SQLite 19 均已映射）；
+         affected=0 或冲突均表示本轮已被执行/正在执行 -->
+    <insert id="insertLogIgnore" parameterType="com.privernal.job.domain.SystemScheduleTaskLog">
+        INSERT INTO system_schedule_task_log
+            (task_id, organization_id, app_id, source, fire_time, attempt, task_version, action_snapshot,
+             status, executor, start_time, trace_id)
+        VALUES (#{taskId}, #{organizationId}, #{appId}, #{source}, #{fireTime}, #{attempt}, #{taskVersion},
+                #{actionSnapshot}, 'RUNNING', #{executor}, <include refid="privernal.dialect.now3"/>, #{traceId})
+    </insert>
+
+    <update id="markRunning">
+        UPDATE system_schedule_task
+        SET status = 'RUNNING', running_instance = #{instanceId}, running_since = <include refid="privernal.dialect.now3"/>, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND status = 'TRIGGERED' AND owner_instance = #{instanceId}
+    </update>
+
+    <update id="finishOnce">
+        UPDATE system_schedule_task
+        SET status = 'DONE', running_instance = NULL, running_since = NULL, owner_instance = NULL, lease_until = NULL,
+            last_fire_time = #{fireTime}, trigger_count = trigger_count + 1, fail_count = 0,
+            last_error = NULL, current_attempt = 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND status = 'RUNNING' AND running_instance = #{instanceId}
+    </update>
+
+    <update id="finishCycle">
+        UPDATE system_schedule_task
+        SET status = 'READY', running_instance = NULL, running_since = NULL, owner_instance = NULL, lease_until = NULL,
+            next_fire_time = #{nextFireTime}, pending_next_fire_time = #{pendingNextFireTime},
+            last_fire_time = #{fireTime}, trigger_count = trigger_count + 1, fail_count = 0,
+            last_error = NULL, current_attempt = 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND status = 'RUNNING' AND running_instance = #{instanceId}
+    </update>
+
+    <update id="markFailed">
+        UPDATE system_schedule_task
+        SET status = CASE WHEN #{finalDone} THEN 'DONE' ELSE 'READY' END,
+            running_instance = NULL, running_since = NULL, owner_instance = NULL, lease_until = NULL,
+            next_fire_time = #{nextFireTime},
+            <if test="pendingNextFireTime != null">pending_next_fire_time = #{pendingNextFireTime},</if>
+            fail_count = CASE WHEN #{countFail} THEN fail_count + 1 ELSE fail_count END,
+            last_error = #{errorMsg}, current_attempt = #{nextAttempt},
+            updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND status = 'RUNNING' AND running_instance = #{instanceId}
+    </update>
+
+    <update id="revertPoolRejected">
+        UPDATE system_schedule_task
+        SET status = 'READY', owner_instance = NULL, lease_until = NULL, updated_time = <include refid="privernal.dialect.now3"/>,
+            next_fire_time = CASE
+                WHEN #{once} = TRUE THEN <include refid="privernal.dialect.leasePlus30"/>
+                ELSE pending_next_fire_time END
+        WHERE id = #{id} AND status = 'TRIGGERED'
+    </update>
+
+    <update id="applyMisfire">
+        UPDATE system_schedule_task
+        SET status = CASE WHEN #{once} = TRUE THEN 'DONE' ELSE 'READY' END,
+            next_fire_time = #{nextFireTime},
+            <if test="pendingNextFireTime != null">pending_next_fire_time = #{pendingNextFireTime},</if>
+            current_attempt = 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND deleted_flag = 'N' AND status = 'READY'
+    </update>
+
+    <update id="autoPauseIfFailed">
+        UPDATE system_schedule_task
+        SET status = 'PAUSED', updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND deleted_flag = 'N' AND status = 'READY' AND fail_count &gt;= #{threshold}
+    </update>
+
+    <select id="selectExpiredTriggers" resultType="com.privernal.job.domain.SystemScheduleTask">
+        SELECT id, owner_instance, trigger_type, cron_expr, interval_seconds, jitter_seconds, period_seconds
+        FROM system_schedule_task
+        WHERE deleted_flag = 'N' AND status = 'TRIGGERED' AND lease_until &lt; <include refid="privernal.dialect.now3"/>
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectZombieRunning" resultType="com.privernal.job.domain.SystemScheduleTask">
+        SELECT id, running_instance, trigger_type, cron_expr, interval_seconds, jitter_seconds, period_seconds,
+               timeout_seconds, next_fire_time, pending_next_fire_time
+        FROM system_schedule_task
+        WHERE deleted_flag = 'N' AND status = 'RUNNING'
+          AND running_since &lt; <include refid="privernal.dialect.zombieCutoff"/>
+        LIMIT #{limit}
+    </select>
+
+    <update id="recoverExpiredTrigger">
+        UPDATE system_schedule_task
+        SET status = 'READY', owner_instance = NULL, lease_until = NULL, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND status = 'TRIGGERED' AND (owner_instance = #{instanceId} OR lease_until &lt; <include refid="privernal.dialect.now3"/>)
+    </update>
+
+    <update id="recoverZombieRunning">
+        UPDATE system_schedule_task
+        SET status = CASE WHEN #{once} = TRUE THEN 'DONE' ELSE 'READY' END,
+            running_instance = NULL, running_since = NULL, owner_instance = NULL, lease_until = NULL,
+            next_fire_time = #{nextFireTime}, current_attempt = 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND status = 'RUNNING'
+    </update>
+
+    <update id="casManualRun">
+        UPDATE system_schedule_task
+        SET running_instance = #{instanceId}, running_since = <include refid="privernal.dialect.now3"/>, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND deleted_flag = 'N' AND status IN ('READY', 'PAUSED')
+          AND (running_instance IS NULL OR running_instance = '')
+    </update>
+
+    <update id="releaseManualRun">
+        UPDATE system_schedule_task
+        SET running_instance = NULL, running_since = NULL, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND running_instance = #{instanceId}
+    </update>
+
+    <update id="terminateRunning">
+        UPDATE system_schedule_task
+        SET status = CASE WHEN #{once} = TRUE THEN 'DONE' ELSE 'READY' END,
+            running_instance = NULL, running_since = NULL, owner_instance = NULL, lease_until = NULL,
+            next_fire_time = #{nextFireTime}, current_attempt = 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND status = 'RUNNING'
+    </update>
+
+    <!-- P2-6 兼容口径：MySQL 支持 DELETE ... LIMIT（原 P1-3 语义）；
+         SQLite（xerial 未编 UPDATE/DELETE LIMIT）改 id IN (子查询)，语义一致 -->
+    <delete id="purgeFinishedOnce" databaseId="mysql">
+        DELETE FROM system_schedule_task
+        WHERE trigger_type = 'ONCE' AND status IN ('DONE', 'CANCELLED') AND deleted_flag = 'N'
+          AND updated_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/>
+        LIMIT #{limit}
+    </delete>
+    <delete id="purgeFinishedOnce" databaseId="sqlite">
+        DELETE FROM system_schedule_task
+        WHERE id IN (
+            SELECT id FROM system_schedule_task
+            WHERE trigger_type = 'ONCE' AND status IN ('DONE', 'CANCELLED') AND deleted_flag = 'N'
+              AND updated_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/>
+            LIMIT #{limit}
+        )
+    </delete>
+
+    <!-- P2-6：配额应急清理——按组织删最老的终态一次性任务（不等 7 天保留期）。
+         只删本组织的行，避免一个组织打满配额去清别的组织数据 -->
+    <delete id="purgeOldestFinishedByOrg" databaseId="mysql">
+        DELETE FROM system_schedule_task
+        WHERE trigger_type = 'ONCE' AND status IN ('DONE', 'CANCELLED') AND deleted_flag = 'N'
+          AND organization_id = #{orgId}
+        ORDER BY updated_time ASC
+        LIMIT #{limit}
+    </delete>
+    <delete id="purgeOldestFinishedByOrg" databaseId="sqlite">
+        DELETE FROM system_schedule_task
+        WHERE id IN (
+            SELECT id FROM system_schedule_task
+            WHERE trigger_type = 'ONCE' AND status IN ('DONE', 'CANCELLED') AND deleted_flag = 'N'
+              AND organization_id = #{orgId}
+            ORDER BY updated_time ASC
+            LIMIT #{limit}
+        )
+    </delete>
+
+    <!-- 日志归档：搬非 SUCCESS 行进归档表（幂等：唯一键冲突跳过；
+         MySQL INSERT IGNORE / SQLite ON CONFLICT DO NOTHING 受影响行数语义一致） -->
+    <insert id="archiveOldLogs" databaseId="mysql">
+        INSERT IGNORE INTO system_schedule_log_archive
+            (id, task_id, organization_id, fire_time, attempt, status, error_msg, result_digest, archived_time)
+        SELECT id, task_id, organization_id, fire_time, attempt, status, error_msg, result_digest, <include refid="privernal.dialect.nowS"/>
+        FROM system_schedule_task_log
+        WHERE fire_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/> AND status != 'SUCCESS'
+        LIMIT #{limit}
+    </insert>
+    <insert id="archiveOldLogs" databaseId="sqlite">
+        INSERT INTO system_schedule_log_archive
+            (id, task_id, organization_id, fire_time, attempt, status, error_msg, result_digest, archived_time)
+        SELECT id, task_id, organization_id, fire_time, attempt, status, error_msg, result_digest, <include refid="privernal.dialect.nowS"/>
+        FROM system_schedule_task_log
+        WHERE fire_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/> AND status != 'SUCCESS'
+        LIMIT #{limit}
+        ON CONFLICT DO NOTHING
+    </insert>
+
+    <delete id="deleteArchivedLogs" databaseId="mysql">
+        DELETE FROM system_schedule_task_log
+        WHERE fire_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/>
+        LIMIT #{limit}
+    </delete>
+    <delete id="deleteArchivedLogs" databaseId="sqlite">
+        DELETE FROM system_schedule_task_log
+        WHERE id IN (
+            SELECT id FROM system_schedule_task_log
+            WHERE fire_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/>
+            LIMIT #{limit}
+        )
+    </delete>
+
+    <insert id="insertTask" parameterType="com.privernal.job.domain.SystemScheduleTask">
+        INSERT INTO system_schedule_task
+            (id, tenant_id, revision, created_by, created_time, deleted_flag, deleted_time, department_id,
+             organization_id, remark, task_code, title, app_id, source, biz_key, trigger_type, cron_expr,
+             interval_seconds, period_seconds, jitter_seconds, misfire_policy, misfire_window_seconds,
+             concurrent_policy, timeout_seconds, max_retry, action_type, action_config, biz_context,
+             database_name, callback_url, status, next_fire_time, pending_next_fire_time, version,
+             current_attempt, trigger_count, fail_count)
+        VALUES (#{id}, #{tenantId}, 1, #{createdBy}, <include refid="privernal.dialect.nowS"/>, 'N', '1970-01-01 00:00:00.000', #{departmentId},
+                #{organizationId}, #{remark}, #{taskCode}, #{title}, #{appId}, #{source}, #{bizKey}, #{triggerType},
+                #{cronExpr}, #{intervalSeconds}, #{periodSeconds}, #{jitterSeconds}, #{misfirePolicy},
+                #{misfireWindowSeconds}, #{concurrentPolicy}, #{timeoutSeconds}, #{maxRetry}, #{actionType},
+                #{actionConfig}, #{bizContext}, #{databaseName}, #{callbackUrl}, #{status}, #{nextFireTime},
+                #{pendingNextFireTime}, 0, 1, 0, 0)
+    </insert>
+
+    <update id="upsertOverwrite" parameterType="com.privernal.job.domain.SystemScheduleTask">
+        UPDATE system_schedule_task
+        SET trigger_type = #{triggerType}, cron_expr = #{cronExpr}, interval_seconds = #{intervalSeconds},
+            period_seconds = #{periodSeconds}, jitter_seconds = #{jitterSeconds},
+            misfire_policy = #{misfirePolicy}, misfire_window_seconds = #{misfireWindowSeconds},
+            timeout_seconds = #{timeoutSeconds}, max_retry = #{maxRetry}, action_type = #{actionType},
+            action_config = #{actionConfig}, biz_context = #{bizContext}, database_name = #{databaseName},
+            title = #{title}, next_fire_time = #{nextFireTime},
+            pending_next_fire_time = #{pendingNextFireTime}, current_attempt = 1, fail_count = 0,
+            <!-- P1-4：能整行覆盖说明不在途，直接生效即已应用，暂存的变更必须一并清掉 -->
+            pending_change = NULL,
+            version = version + 1, updated_time = <include refid="privernal.dialect.now3"/>
+            <!-- PAUSED 保持暂停（§12.2：避免改个日期把停用任务悄悄激活），状态列不动 -->
+        WHERE id = #{id} AND deleted_flag = 'N' AND status IN ('READY', 'PAUSED')
+    </update>
+
+    <!-- P1-4：在途编辑/启停暂存。仅当行确实处于 TRIGGERED/RUNNING 才登记，
+         否则说明状态已变（应由 save 走整行覆盖路径），避免留下永不消费的幽灵变更 -->
+    <update id="updatePendingChange">
+        UPDATE system_schedule_task
+        SET pending_change = <include refid="privernal.dialect.pendingChangeValue"/>, version = version + 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND deleted_flag = 'N' AND status IN ('TRIGGERED', 'RUNNING')
+    </update>
+
+    <update id="clearPendingChange">
+        UPDATE system_schedule_task
+        SET pending_change = NULL, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND deleted_flag = 'N' AND pending_change IS NOT NULL
+    </update>
+
+    <!-- P1-5 配套：cancel 不再硬改 TRIGGERED/RUNNING 行（§7.5），但删除级联必须最终生效——
+         把取消意图登记为在途变更，本轮回写后由 PendingChangeApplier 落 CANCELLED -->
+    <update id="stageCancelInFlightByPrefix">
+        UPDATE system_schedule_task
+        SET pending_change = json_object('status', 'CANCELLED'), version = version + 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE deleted_flag = 'N' AND organization_id = #{orgId} AND source = #{source}
+          AND status IN ('TRIGGERED', 'RUNNING')
+          AND biz_key LIKE CONCAT(#{bizPrefix}, '%')
+    </update>
+
+    <update id="stageCancelInFlightByBizKey">
+        UPDATE system_schedule_task
+        SET pending_change = json_object('status', 'CANCELLED'), version = version + 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE deleted_flag = 'N' AND organization_id = #{orgId} AND source = #{source}
+          AND status IN ('TRIGGERED', 'RUNNING') AND biz_key = #{bizKey}
+    </update>
+
+    <update id="upsertRevive" parameterType="com.privernal.job.domain.SystemScheduleTask">
+        UPDATE system_schedule_task
+        SET trigger_type = #{triggerType}, cron_expr = #{cronExpr}, interval_seconds = #{intervalSeconds},
+            period_seconds = #{periodSeconds}, jitter_seconds = #{jitterSeconds},
+            misfire_policy = #{misfirePolicy}, misfire_window_seconds = #{misfireWindowSeconds},
+            timeout_seconds = #{timeoutSeconds}, max_retry = #{maxRetry}, action_type = #{actionType},
+            action_config = #{actionConfig}, biz_context = #{bizContext}, database_name = #{databaseName},
+            title = #{title}, status = 'READY', next_fire_time = #{nextFireTime},
+            pending_next_fire_time = #{pendingNextFireTime}, current_attempt = 1, fail_count = 0,
+            trigger_count = 0, last_error = NULL, running_instance = NULL, running_since = NULL,
+            owner_instance = NULL, lease_until = NULL, version = version + 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND deleted_flag = 'N' AND status IN ('DONE', 'CANCELLED')
+    </update>
+
+    <update id="reschedule">
+        UPDATE system_schedule_task
+        SET next_fire_time = #{newFireTime}, current_attempt = 1, version = version + 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE id = #{id} AND deleted_flag = 'N' AND status IN ('READY', 'PAUSED')
+    </update>
+
+    <update id="cancelByBizKey">
+        UPDATE system_schedule_task
+        SET status = 'CANCELLED', current_attempt = 1, version = version + 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE deleted_flag = 'N' AND organization_id = #{orgId} AND source = #{source} AND biz_key = #{bizKey}
+          AND status IN ('READY', 'PAUSED')
+    </update>
+
+    <update id="cancelByPrefix">
+        UPDATE system_schedule_task
+        SET status = 'CANCELLED', current_attempt = 1, version = version + 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE deleted_flag = 'N' AND organization_id = #{orgId} AND source = #{source}
+          AND biz_key LIKE CONCAT(#{bizPrefix}, '%')
+          AND status IN ('READY', 'PAUSED')
+    </update>
+
+    <update id="pauseByAppId">
+        UPDATE system_schedule_task
+        SET status = 'PAUSED', version = version + 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE deleted_flag = 'N' AND organization_id = #{orgId} AND app_id = #{appId} AND status = 'READY'
+    </update>
+
+    <select id="countActiveByApp" resultType="java.util.HashMap">
+        SELECT t.app_id AS appId,
+               IFNULL(a.app_name, CASE WHEN t.app_id = '' OR t.app_id IS NULL THEN '（无应用/系统级）' ELSE t.app_id END) AS appName,
+               COUNT(*) AS active
+        FROM system_schedule_task t
+        LEFT JOIN system_app_info a ON a.id = t.app_id AND a.deleted_flag = 'N'
+        WHERE t.deleted_flag = 'N' AND t.organization_id = #{orgId}
+          AND t.status IN ('READY', 'PAUSED', 'TRIGGERED', 'RUNNING')
+        GROUP BY t.app_id, appName
+        ORDER BY active DESC
+    </select>
+
+    <select id="countActive" resultType="long">
+        SELECT COUNT(*)
+        FROM system_schedule_task
+        WHERE deleted_flag = 'N' AND organization_id = #{orgId}
+          AND status IN ('READY', 'PAUSED', 'TRIGGERED', 'RUNNING')
+          <if test="appId != null and appId != ''">AND app_id = #{appId}</if>
+    </select>
+
+    <!-- 排队幂等：MySQL INSERT IGNORE / SQLite ON CONFLICT DO NOTHING，uk_task_fire 防重 -->
+    <insert id="enqueueQueue" databaseId="mysql">
+        INSERT IGNORE INTO system_schedule_task_queue (task_id, fire_time, status, queued_time)
+        VALUES (#{taskId}, #{fireTime}, 'PENDING', <include refid="privernal.dialect.now3"/>)
+    </insert>
+    <insert id="enqueueQueue" databaseId="sqlite">
+        INSERT INTO system_schedule_task_queue (task_id, fire_time, status, queued_time)
+        VALUES (#{taskId}, #{fireTime}, 'PENDING', <include refid="privernal.dialect.now3"/>)
+        ON CONFLICT DO NOTHING
+    </insert>
+
+    <select id="pollEarliestQueue" resultType="java.util.Date">
+        SELECT fire_time FROM system_schedule_task_queue
+        WHERE task_id = #{taskId} AND status = 'PENDING'
+        ORDER BY fire_time ASC LIMIT 1
+    </select>
+
+    <delete id="consumeQueue">
+        DELETE FROM system_schedule_task_queue
+        WHERE task_id = #{taskId} AND fire_time = #{fireTime} AND status = 'PENDING'
+    </delete>
+
+    <!-- P1-7：QUEUE 残留清理——任务已删/已终态的排队行永不消费，超期的补跑轮次也已失去意义 -->
+    <delete id="purgeStaleQueue" databaseId="mysql">
+        DELETE FROM system_schedule_task_queue
+        WHERE status = 'PENDING'
+          AND (queued_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/>
+               OR task_id IN (SELECT id FROM system_schedule_task
+                              WHERE deleted_flag = 'Y' OR status IN ('CANCELLED', 'DONE')))
+        LIMIT #{limit}
+    </delete>
+    <delete id="purgeStaleQueue" databaseId="sqlite">
+        DELETE FROM system_schedule_task_queue
+        WHERE id IN (
+            SELECT id FROM system_schedule_task_queue
+            WHERE status = 'PENDING'
+              AND (queued_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/>
+                   OR task_id IN (SELECT id FROM system_schedule_task
+                                  WHERE deleted_flag = 'Y' OR status IN ('CANCELLED', 'DONE')))
+            LIMIT #{limit}
+        )
+    </delete>
+
+    <update id="softDeleteCancel">
+        UPDATE system_schedule_task
+        SET deleted_flag = 'Y', deleted_by = #{operator}, deleted_time = <include refid="privernal.dialect.now3"/>,
+            status = 'CANCELLED', version = version + 1, updated_time = <include refid="privernal.dialect.now3"/>
+        <!-- P1-5：软删必须带组织条件（跨租户越权）+ 排除 RUNNING（执行中的行被删会让回写条件失效、留下孤儿线程） -->
+        WHERE deleted_flag = 'N' AND status &lt;&gt; 'RUNNING' AND organization_id = #{organizationId} AND id IN
+        <foreach collection="ids" item="item" open="(" separator="," close=")">#{item}</foreach>
+    </update>
+
+    <update id="changeStatus">
+        UPDATE system_schedule_task
+        SET status = #{status}, version = version + 1, updated_time = <include refid="privernal.dialect.now3"/>
+        <if test="nextFireTime != null">, next_fire_time = #{nextFireTime}</if>
+        <if test="'READY' == status">, current_attempt = 1, fail_count = 0</if>
+        WHERE id = #{id} AND deleted_flag = 'N'
+    </update>
+
+    <update id="batchChangeStatus">
+        UPDATE system_schedule_task
+        SET status = #{status}, version = version + 1, updated_time = <include refid="privernal.dialect.now3"/>
+        WHERE deleted_flag = 'N' AND organization_id = #{orgId}
+          AND status IN ('READY', 'PAUSED')
+          <if test="appId != null and appId != ''">AND app_id = #{appId}</if>
+          <if test="source != null and source != ''">AND source = #{source}</if>
+          <if test="'READY' == status">AND next_fire_time IS NOT NULL</if>
+    </update>
+
+</mapper>

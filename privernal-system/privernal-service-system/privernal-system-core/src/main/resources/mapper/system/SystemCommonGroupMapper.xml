@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemCommonGroupMapper">
+
+    <resultMap type="com.privernal.system.dto.SystemCommonGroupDTO" id="SystemCommonGroupResult">
+
+        <result property="tenantId" column="tenant_id"/>
+
+        <result property="revision" column="revision"/>
+
+        <result property="createdBy" column="created_by"/>
+
+        <result property="createdTime" column="created_time"/>
+
+        <result property="updatedBy" column="updated_by"/>
+
+        <result property="updatedTime" column="updated_time"/>
+
+        <result property="deletedBy" column="deleted_by"/>
+
+        <result property="deletedTime" column="deleted_time"/>
+
+        <result property="deletedFlag" column="deleted_flag"/>
+
+        <result property="id" column="id"/>
+
+        <result property="remark" column="remark"/>
+
+        <result property="name" column="name"/>
+
+        <result property="code" column="code"/>
+
+        <result property="moduleType" column="module_type"/>
+
+        <result property="description" column="description"/>
+
+        <result property="groupType" column="group_type"/>
+
+        <result property="organizationId" column="organization_id"/>
+
+        <result property="departmentId" column="department_id"/>
+    </resultMap>
+
+    <sql id="selectSystemCommonGroupVo">
+        select commonGroup.tenant_id,
+               commonGroup.revision,
+               commonGroup.created_by,
+               commonGroup.created_time,
+               commonGroup.updated_by,
+               commonGroup.updated_time,
+               commonGroup.deleted_by,
+               commonGroup.deleted_time,
+               commonGroup.deleted_flag,
+               commonGroup.id,
+               commonGroup.remark,
+               commonGroup.name,
+               commonGroup.code,
+               commonGroup.module_type,
+               commonGroup.description,
+               commonGroup.group_type,
+               commonGroup.organization_id,
+               commonGroup.department_id
+        from system_common_group as commonGroup
+    </sql>
+
+    <select id="selectSystemCommonGroupList" parameterType="com.privernal.system.filter.SystemCommonGroupFilterDTO"
+            resultMap="SystemCommonGroupResult">
+        <include refid="selectSystemCommonGroupVo"/>
+        <where>
+            commonGroup.deleted_flag = 'N'
+            <if test="remark != null  and remark != ''">and commonGroup.remark like concat('%', #{remark}, '%')</if>
+            <if test="name != null  and name != ''">and commonGroup.name like concat('%', #{name}, '%')</if>
+            <if test="code != null  and code != ''">and commonGroup.code like concat('%', #{code}, '%')</if>
+            <if test="moduleType != null  and moduleType != ''">and commonGroup.module_type = #{moduleType}</if>
+            <if test="description != null  and description != ''">and commonGroup.description like concat('%',
+                #{description}, '%')
+            </if>
+            <if test="groupType != null  and groupType != ''">and commonGroup.group_type = #{groupType}</if>
+            <if test="organizationId != null  and organizationId != ''">and commonGroup.organization_id =
+                #{organizationId}
+            </if>
+            <if test="departmentId != null  and departmentId != ''">and commonGroup.department_id = #{departmentId}</if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    commonGroup.remark like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by commonGroup.created_time desc
+    </select>
+
+
+    <select id="selectSystemCommonGroupListByAppId" parameterType="String" resultMap="SystemCommonGroupResult">
+        select commonGroup.tenant_id,
+        commonGroup.revision,
+        commonGroup.created_by,
+        commonGroup.created_time,
+        commonGroup.updated_by,
+        commonGroup.updated_time,
+        commonGroup.deleted_by,
+        commonGroup.deleted_time,
+        commonGroup.deleted_flag,
+        commonGroup.id,
+        commonGroup.remark,
+        commonGroup.name,
+        commonGroup.code,
+        commonGroup.module_type,
+        commonGroup.description,
+        commonGroup.group_type,
+        commonGroup.organization_id,
+        commonGroup.department_id
+        from system_common_group as commonGroup
+        left join system_app_common_group as appCommonGroup on appCommonGroup.common_group_id = commonGroup.id and  appCommonGroup.deleted_flag = 'N'
+        <where>
+            commonGroup.deleted_flag = 'N' and appCommonGroup.app_id = #{appId}
+
+        </where>
+        order by commonGroup.created_time desc
+    </select>
+</mapper>

@@ -1,0 +1,92 @@
+# ============================================================================
+# 本地/试用一体化启动：MySQL 8 + Redis + 平台服务。
+#
+#   docker compose up -d          # 首次会自动执行 sql/init.sql 建库
+#   打开 http://localhost:8600/swagger-ui
+#
+# 前提：先在本机打包，镜像里不含编译步骤
+#   mvn clean package
+#   docker build -t privernal-server:local -f privernal-server/Dockerfile privernal-server
+#   docker compose up -d
+#
+# ⚠️ 这份 compose 用了弱口令与关闭验证码，只为本地体验。
+#    任何非本机环境都不要直接套用——见 SECURITY.md。
+# ============================================================================
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: privernal-mysql
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: privernal
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - privernal-mysql-data:/var/lib/mysql
+      # 首次启动（数据目录为空）时自动执行；重复执行需先删掉数据卷
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pprivernal"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: privernal-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  server:
+    image: privernal-server:local
+    container_name: privernal-server
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: pro
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: dynamic_platform
+      MYSQL_USERNAME: root
+      MYSQL_PASSWORD: privernal
+      MYSQL_USE_SSL: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ""
+      UPLOAD_TYPE: LOCAL
+      FILE_PATH: /data/privernal/upload
+      # 回显前缀按你的访问地址改；compose 默认直连 8600
+      FILE_DOMAIN: http://localhost:8600
+      # 留空则创建 OpenAPI/Webhook/OIDC 凭证时直接报错（刻意的兜底，防明文入库）
+      OPENAPI_SECRET_MASTER_KEY: ""
+      # 本机演示关闭验证码；对外部署必须改回 true
+      CAPTCHA_ENABLED: "false"
+      SPRINGDOC_ENABLED: "true"
+      DRUID_STAT_ENABLED: "false"
+      TZ: Asia/Shanghai
+      JAVA_OPTS: "-Xms512m -Xmx1g"
+    ports:
+      - "8600:8600"
+      - "16001:16001"
+    volumes:
+      - privernal-upload:/data/privernal/upload
+      - privernal-logs:/data/privernal/logs
+
+volumes:
+  privernal-mysql-data:
+  privernal-upload:
+  privernal-logs:

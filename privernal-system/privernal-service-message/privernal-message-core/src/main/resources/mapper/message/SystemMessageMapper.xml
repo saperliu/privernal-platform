@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.message.mapper.SystemMessageMapper">
+
+    <resultMap type="com.privernal.message.dto.SystemMessageDTO" id="SystemMessageResult">
+        <result property="id"    column="id"    />
+        <result property="mainTitle"    column="main_title"    />
+        <result property="subTitle"    column="sub_title"    />
+        <result property="messageType"    column="message_type"    />
+        <result property="messagePerson"    column="message_person"    />
+        <result property="detailUrl"    column="detail_url"    />
+        <result property="content"    column="content"    />
+        <result property="status"    column="status"    />
+        <result property="remark"    column="remark"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="departmentId"    column="department_id"    />
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdName"    column="createdName"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+    </resultMap>
+
+    <select id="selectSystemMessageList" parameterType="com.privernal.message.filter.SystemMessageFilterDTO" resultMap="SystemMessageResult">
+        select systemMessage.id, systemMessage.main_title, systemMessage.sub_title, systemMessage.message_type,
+               systemMessage.detail_url,
+               systemMessage.message_person,
+               systemMessage.content, systemMessage.status, systemMessage.remark, systemMessage.organization_id,
+               systemMessage.department_id, systemMessage.tenant_id, systemMessage.revision, systemMessage.created_by, systemMessage.created_time,
+               systemMessage.updated_by, systemMessage.updated_time, systemMessage.deleted_by, systemMessage.deleted_time, systemMessage.deleted_flag,
+               systemMessage.created_name as createdName
+        from system_message as systemMessage
+        <where>
+            systemMessage.deleted_flag = 'N'
+            <if test="mainTitle != null  and mainTitle != ''">and systemMessage.main_title like concat('%',
+                #{mainTitle}, '%')
+            </if>
+            <if test="subTitle != null  and subTitle != ''">and systemMessage.sub_title like concat('%', #{subTitle},
+                '%')
+            </if>
+            <if test="messageType != null  and messageType != ''">and systemMessage.message_type = #{messageType}</if>
+            <if test="messagePerson != null  and messagePerson != ''">and systemMessage.message_person =
+                #{messagePerson}
+            </if>
+            <if test="detailUrl != null  and detailUrl != ''">and systemMessage.detail_url = #{detailUrl}</if>
+            <if test="content != null  and content != ''">and systemMessage.content like concat('%', #{content}, '%')
+            </if>
+            <if test="status != null ">and systemMessage.status = #{status}</if>
+            <if test="remark != null  and remark != ''">and systemMessage.remark like concat('%', #{remark}, '%')</if>
+            <if test="createdName != null  and createdName != ''">and systemMessage.created_name like concat('%',
+                #{createdName}, '%')
+            </if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    systemMessage.remark like concat('%', #{item}, '%')
+                    or systemMessage.main_title like concat('%', #{item}, '%')
+                    or systemMessage.sub_title like concat('%', #{item}, '%')
+                    or systemMessage.content like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by systemMessage.created_time desc
+    </select>
+
+
+    <resultMap type="com.privernal.message.dto.MessageUserDTO" id="MessageUserDTO">
+        <result property="id"    column="id"    />
+        <result property="mainTitle"    column="main_title"    />
+        <result property="subTitle"    column="sub_title"    />
+        <result property="messageType"    column="message_type"    />
+        <result property="messagePerson"    column="message_person"    />
+        <result property="detailUrl"    column="detail_url"    />
+        <result property="content"    column="content"    />
+        <result property="status"    column="status"    />
+        <result property="remark"    column="remark"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="departmentId"    column="department_id"    />
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdName"    column="createdName"    />
+        <result property="readStatus"    column="readStatus"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+    </resultMap>
+
+    <select id="selectSystemMessageListByUser" parameterType="com.privernal.message.filter.SystemMessageUserFilterDTO" resultMap="MessageUserDTO">
+        select systemMessage.id, systemMessage.main_title, systemMessage.sub_title, systemMessage.message_type, systemMessage.detail_url,
+        systemMessage.content, systemMessage.status, systemMessage.remark, systemMessage.organization_id,
+        systemMessage.department_id, systemMessage.tenant_id, systemMessage.revision, systemMessage.created_by, systemMessage.created_time,
+        systemMessage.updated_by, systemMessage.updated_time, systemMessage.deleted_by, systemMessage.deleted_time, systemMessage.deleted_flag,
+        mus.status as readStatus,
+        systemMessage.created_name as createdName
+        from system_message as systemMessage
+        left join system_message_user as mus on mus.message_id = systemMessage.id
+        <where>
+            systemMessage.deleted_flag = 'N' and  (mus.user_id = #{userId} and mus.deleted_flag = 'N')
+            <if test="messageType != null  and messageType != ''"> and systemMessage.message_type = #{messageType}</if>
+            <if test="status != null and status == 0 "> and (mus.status = #{status} or mus.status is null )</if>
+            <if test="status != null and status == 1 "> and mus.status = #{status}</if>
+            <if test="keywords!=null and keywords.length>0">
+            and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    systemMessage.main_title like concat('%', #{item}, '%')
+                    or systemMessage.sub_title  like concat('%', #{item}, '%')
+                    or systemMessage.content  like concat('%', #{item}, '%')
+                    or systemMessage.remark  like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+         order by systemMessage.created_time desc
+    </select>
+
+
+    <select id="selectSystemMessageListNoRead"  resultMap="SystemMessageResult">
+        select systemMessage.id, systemMessage.main_title, systemMessage.sub_title, systemMessage.message_type,
+        systemMessage.detail_url,
+        systemMessage.message_person,
+        systemMessage.content, systemMessage.status, systemMessage.remark, systemMessage.organization_id,
+        systemMessage.department_id, systemMessage.tenant_id, systemMessage.revision, systemMessage.created_by, systemMessage.created_time,
+        systemMessage.updated_by, systemMessage.updated_time, systemMessage.deleted_by, systemMessage.deleted_time, systemMessage.deleted_flag
+        from system_message as systemMessage
+        left join system_message_user as mus on mus.message_id = systemMessage.id
+        <where>
+            systemMessage.deleted_flag = 'N'  and systemMessage.message_person = 'ALL'  and  mus.user_id is null
+        </where>
+    </select>
+</mapper>

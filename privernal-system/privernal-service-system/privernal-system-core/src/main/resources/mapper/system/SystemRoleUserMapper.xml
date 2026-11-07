@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemRoleUserMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemRoleUser" id="SystemRoleUserResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="roleId"    column="role_id"    />
+        <result property="userId"    column="user_id"    />
+    </resultMap>
+
+    <sql id="selectSystemRoleUserVo">
+        select tenant_id, revision, created_by, created_time, updated_by, updated_time, deleted_flag, deleted_by, deleted_time, id, remark, role_id, user_id from system_role_user as roleUser
+    </sql>
+
+    <select id="selectSystemRoleUserList" parameterType="com.privernal.system.filter.SystemRoleUserFilterDTO" resultMap="SystemRoleUserResult">
+        <include refid="selectSystemRoleUserVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="id != null  and id != ''"> and id = #{id}</if>
+            <if test="remark != null  and remark != ''"> and remark = #{remark}</if>
+            <if test="roleId != null  and roleId != ''"> and role_id = #{roleId}</if>
+            <if test="userId != null  and userId != ''"> and user_id = #{userId}</if>
+        </where>
+    </select>
+
+
+    <select id="selectSystemRoleUserByUserId" parameterType="String" resultMap="SystemRoleUserResult">
+        <include refid="selectSystemRoleUserVo"/>
+        <where>
+            deleted_flag = 'N' and  user_id = #{userId}
+        </where>
+    </select>
+
+
+    <resultMap type="com.privernal.system.dto.SystemRoleUserDTO" id="SystemRoleUserDTOResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="roleId"    column="role_id"    />
+        <result property="userId"    column="user_id"    />
+    </resultMap>
+    <select id="selectRoleUserByUserIdAndRoleId" parameterType="String" resultMap="SystemRoleUserDTOResult">
+        <include refid="selectSystemRoleUserVo"/>
+        <where>
+            deleted_flag = 'N' and role_id = #{roleId}  and user_id = #{userId}
+        </where>
+    </select>
+
+
+    <resultMap type="com.privernal.system.dto.SystemRoleUserDTO" id="SystemRoleUserDTO">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="roleId"    column="role_id"    />
+        <result property="roleName"    column="role_name"    />
+        <result property="userId"    column="user_id"    />
+    </resultMap>
+    <select id="selectAuthRoleByUserId" parameterType="String" resultMap="SystemRoleUserDTO">
+
+        select
+            roleUser.created_by, roleUser.created_time, roleUser.deleted_flag, roleUser.deleted_by,
+            roleUser.deleted_time, roleUser.id,
+            roleUser.remark,
+            roleUser.role_id,
+            role.role_name,
+            roleUser.user_id
+        from system_role_user as roleUser
+        left join system_role as role on roleUser.role_id = role.id
+
+        <where>
+            roleUser.deleted_flag = 'N' and role.organization_id = #{organizationId}  and roleUser.user_id = #{userId}
+        </where>
+    </select>
+</mapper>

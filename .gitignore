@@ -1,0 +1,72 @@
+######################################################################
+# Build Tools
+
+.gradle
+/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+target/
+!.mvn/wrapper/maven-wrapper.jar
+pom-xml-flattened
+*.xml.versionsBackup
+
+######################################################################
+# IDE
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+nbproject/private/
+nbbuild/
+nbdist/
+.nb-gradle/
+
+### VSCode ###
+.vscode
+
+######################################################################
+# 运行期产物
+
+logs/
+*.log
+upload/
+*.h2.db
+# 运行时 SQLite 库（含真实账号/日志/演示数据；全新部署用 release/sql/init-sqlite.sql 自举）
+data/
+
+######################################################################
+# 本地环境配置：含真实口令/密钥，一律不入库。
+# 新环境从 application-local.yaml.example 复制同名文件后填写。
+
+privernal-server/src/main/resources/application-local.yaml
+privernal-server/src/main/resources/application-dev.yaml
+*.local.yaml
+.env
+.env.*
+!.env.example
+
+# 本地容器/私有制品库配置（曾带阿里云制品库口令）
+.devcontainer/settings.xml
+.devcontainer/*.env
+
+# 内部工具产物
+.mimosa/
+
+######################################################################
+# 操作系统
+
+.DS_Store
+Thumbs.db
+data/

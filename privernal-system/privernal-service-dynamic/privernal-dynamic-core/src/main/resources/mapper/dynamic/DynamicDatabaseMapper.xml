@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.dynamic.dbs.mapper.DynamicDatabaseMapper">
+
+    <resultMap type="com.privernal.dynamic.dto.DynamicDatabaseDTO" id="DynamicDatabaseResult">
+
+        <result property="id" column="id"/>
+
+        <result property="tenantId" column="tenant_id"/>
+
+        <result property="revision" column="revision"/>
+
+        <result property="createdBy" column="created_by"/>
+
+        <result property="createdTime" column="created_time"/>
+
+        <result property="updatedBy" column="updated_by"/>
+
+        <result property="updatedTime" column="updated_time"/>
+
+        <result property="deletedFlag" column="deleted_flag"/>
+
+        <result property="deletedBy" column="deleted_by"/>
+
+        <result property="deletedTime" column="deleted_time"/>
+
+        <result property="departmentId" column="department_id"/>
+
+        <result property="organizationId" column="organization_id"/>
+
+        <result property="remark" column="remark"/>
+
+        <result property="title" column="title"/>
+
+        <result property="status" column="status"/>
+
+        <result property="databaseName" column="database_name"/>
+
+        <result property="databaseType" column="database_type"/>
+
+        <result property="driver" column="driver"/>
+
+        <result property="password" column="password"/>
+
+        <result property="url" column="url"/>
+
+        <result property="userName" column="user_name"/>
+    </resultMap>
+
+    <sql id="selectDynamicDatabaseVo">
+        select datab.id,
+               datab.tenant_id,
+               datab.revision,
+               datab.created_by,
+               datab.created_time,
+               datab.updated_by,
+               datab.updated_time,
+               datab.deleted_flag,
+               datab.deleted_by,
+               datab.deleted_time,
+               datab.department_id,
+               datab.organization_id,
+               datab.remark,
+               datab.title,
+               datab.status,
+               datab.database_name,
+               datab.database_type,
+               datab.driver,
+               datab.password,
+               datab.url,
+               datab.user_name
+        from dynamic_database as datab
+    </sql>
+
+    <select id="selectDynamicDatabaseList" parameterType="com.privernal.dynamic.filter.DynamicDatabaseFilterDTO"
+            resultMap="DynamicDatabaseResult">
+        <include refid="selectDynamicDatabaseVo"/>
+        <where>
+            datab.deleted_flag = 'N'
+            <if test="departmentId != null  and departmentId != ''">and datab.department_id = #{departmentId}</if>
+            <if test="organizationId != null  and organizationId != ''">and datab.organization_id = #{organizationId}</if>
+            <if test="remark != null  and remark != ''">and datab.remark = #{remark}</if>
+            <if test="title != null  and title != ''">and datab.title = #{title}</if>
+            <if test="status != null ">and datab.status = #{status}</if>
+            <if test="databaseName != null  and databaseName != ''">and datab.database_name like concat('%', #{databaseName}, '%')
+            </if>
+            <if test="databaseType != null  and databaseType != ''">and datab.database_type = #{databaseType}</if>
+            <if test="driver != null  and driver != ''">and datab.driver = #{driver}</if>
+            <if test="password != null  and password != ''">and v.password = #{password}</if>
+            <if test="url != null  and url != ''">and datab.url = #{url}</if>
+            <if test="userName != null  and userName != ''">and datab.user_name like concat('%', #{userName}, '%')
+            </if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    datab.remark like concat('%', #{item}, '%')
+                    or datab.title like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by datab.created_time desc
+    </select>
+
+
+</mapper>

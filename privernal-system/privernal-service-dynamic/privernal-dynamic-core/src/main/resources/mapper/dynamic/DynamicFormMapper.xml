@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.dynamic.dbs.mapper.DynamicFormMapper">
+
+    <resultMap type="com.privernal.dynamic.dto.DynamicFormDTO" id="DynamicFormResult">
+
+        <result property="id" column="id"/>
+
+        <result property="tenantId" column="tenant_id"/>
+
+        <result property="revision" column="revision"/>
+
+        <result property="createdBy" column="created_by"/>
+
+        <result property="createdTime" column="created_time"/>
+
+        <result property="updatedBy" column="updated_by"/>
+
+        <result property="updatedTime" column="updated_time"/>
+
+        <result property="deletedFlag" column="deleted_flag"/>
+
+        <result property="deletedBy" column="deleted_by"/>
+
+        <result property="deletedTime" column="deleted_time"/>
+
+        <result property="departmentId" column="department_id"/>
+
+        <result property="organizationId" column="organization_id"/>
+
+        <result property="remark" column="remark"/>
+
+        <result property="title" column="title"/>
+
+        <result property="status" column="status"/>
+
+        <result property="tableCode" column="table_code"/>
+
+        <result property="tableName" column="table_name"/>
+
+        <result property="metaData" column="meta_data"
+                typeHandler="com.privernal.common.mybatis.type.JSONObjectTypeHandler"/>
+
+        <result property="isWorkflow" column="is_workflow"/>
+
+        <result property="workflowCode" column="workflow_code"/>
+        <result property="appId" column="app_id"/>
+    </resultMap>
+
+    <sql id="selectDynamicFormVo">
+        select form.id,
+               form.tenant_id,
+               form.revision,
+               form.created_by,
+               form.created_time,
+               form.updated_by,
+               form.updated_time,
+               form.deleted_flag,
+               form.deleted_by,
+               form.deleted_time,
+               form.department_id,
+               form.organization_id,
+               form.remark,
+               form.title,
+               form.status,
+               form.table_code,
+               form.table_name,
+               form.meta_data,
+               form.is_workflow,
+               form.app_id,
+               form.workflow_code
+        from dynamic_form as form
+    </sql>
+
+    <select id="selectDynamicFormList" parameterType="com.privernal.dynamic.filter.DynamicFormFilterDTO"
+            resultMap="DynamicFormResult">
+        <include refid="selectDynamicFormVo"/>
+        <where>
+            form.deleted_flag = 'N'
+            <if test="departmentId != null  and departmentId != ''">and form.department_id = #{departmentId}</if>
+            <if test="organizationId != null  and organizationId != ''">and form.organization_id = #{organizationId}
+            </if>
+            <if test="remark != null  and remark != ''">and form.remark = #{remark}</if>
+            <if test="title != null  and title != ''">and form.title = #{title}</if>
+            <if test="status != null ">and form.status = #{status}</if>
+            <if test="tableCode != null  and tableCode != ''">and form.table_code = #{tableCode}</if>
+            <if test="tableName != null  and tableName != ''">and form.table_name like concat('%', #{tableName}, '%')
+            </if>
+            <if test="metaData != null ">and form.meta_data = #{metaData}</if>
+            <if test="isWorkflow != null ">and form.is_workflow = #{isWorkflow}</if>
+            <if test="workflowCode != null  and workflowCode != ''">and form.workflow_code = #{workflowCode}</if>
+            <if test="appId != null  and appId != ''">and form.app_id = #{appId}</if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    form.remark like concat('%', #{item}, '%')
+                    or form.title like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by form.created_time desc
+    </select>
+
+
+</mapper>

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.dynamic.advanced.mapper.DynamicLinkageLogMapper">
+
+    <!-- 联动日志分页：条件全走 #{} 绑定；组织隔离靠调用方注入 OrganizationContextHolder 后
+         由数据权限拦截器追加 organization_id 条件（本表带组织列） -->
+    <sql id="logWhere">
+        <where>
+            <if test="filter.ruleId != null and filter.ruleId != ''">AND l.rule_id = #{filter.ruleId}</if>
+            <if test="filter.formId != null and filter.formId != ''">AND l.form_id = #{filter.formId}</if>
+            <if test="filter.eventType != null and filter.eventType != ''">AND l.event_type = #{filter.eventType}</if>
+            <if test="filter.status != null and filter.status != ''">AND l.status = #{filter.status}</if>
+            <if test="filter.dataId != null and filter.dataId != ''">AND l.data_id = #{filter.dataId}</if>
+            <if test="filter.beginTime != null and filter.beginTime != ''">AND l.start_time &gt;= #{filter.beginTime}</if>
+            <if test="filter.endTime != null and filter.endTime != ''">AND l.start_time &lt;= #{filter.endTime}</if>
+        </where>
+    </sql>
+
+    <select id="selectLogPage" resultType="java.util.HashMap">
+        SELECT l.id, l.rule_id, l.rule_code, l.form_id, l.organization_id, l.database_name,
+               l.event_type, l.data_id, l.event_id, l.fire_time, l.source_tag, l.depth,
+               l.condition_pass, l.condition_trace, l.status, l.action_results, l.error_msg,
+               l.start_time, l.cost_ms
+        FROM dynamic_linkage_log l
+        <include refid="logWhere"/>
+        ORDER BY l.id DESC
+        LIMIT #{filter.offset}, #{filter.limit}
+    </select>
+
+    <select id="countLogPage" resultType="long">
+        SELECT COUNT(1) FROM dynamic_linkage_log l
+        <include refid="logWhere"/>
+    </select>
+</mapper>

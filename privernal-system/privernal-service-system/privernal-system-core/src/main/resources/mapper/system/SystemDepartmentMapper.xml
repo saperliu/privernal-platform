@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemDepartmentMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemDepartment" id="SystemDepartmentResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="deptCode"    column="dept_code"    />
+        <result property="deptName"    column="dept_name"    />
+        <result property="orderNum"    column="order_num"    />
+        <result property="leaderId"    column="leader_id"    />
+        <result property="leaderName"    column="leader_name"    />
+        <result property="status"    column="status"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="synFlag"    column="syn_flag"    />
+        <result property="synId"    column="syn_id"    />
+    </resultMap>
+
+    <sql id="selectSystemDepartmentVo">
+        select department.tenant_id, department.revision, department.created_by, department.created_time, department.updated_by, department.updated_time,
+               department.deleted_flag, department.deleted_by, department.deleted_time,
+               department.id, department.remark, department.dept_code, department.dept_name, department.order_num, department.leader_id, department.status ,user1.nick_name as leader_name,
+               department.organization_id,department.syn_flag,department.syn_id from system_department as department
+    </sql>
+
+    <select id="selectSystemDepartmentList" parameterType="com.privernal.system.filter.SystemDepartmentFilterDTO" resultMap="SystemDepartmentResult">
+        <include refid="selectSystemDepartmentVo"/>
+        left join system_user_base as user1 on department.leader_id = user1.id
+        <where>
+            department.deleted_flag = 'N'
+            <if test="remark != null  and remark != ''"> and department.remark = #{remark}</if>
+            <if test="deptCode != null  and deptCode != ''"> and department.dept_code = #{deptCode}</if>
+            <if test="deptName != null  and deptName != ''"> and department.dept_name like concat('%', #{deptName}, '%')</if>
+            <if test="orderNum != null "> and department.order_num = #{orderNum}</if>
+            <if test="leaderId != null  and leaderId != ''"> and department.leader_id = #{leaderId}</if>
+            <if test="status != null "> and department.status = #{status}</if>
+            <if test="organizationId != null  and organizationId != ''"> and department.organization_id = #{organizationId}</if>
+            <if test="synFlag != null  and synFlag != ''"> and department.syn_flag = #{synFlag}</if>
+            <if test="synId != null  and synId != ''"> and department.syn_id = #{synId}</if>
+
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    department.dept_name like concat('%', #{item}, '%')
+                    or department.dept_code like concat('%', #{item}, '%')
+                    or department.remark like concat('%', #{item}, '%')
+
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by department.order_num,department.created_time desc
+    </select>
+
+    <select id="selectDepartmentList" parameterType="com.privernal.system.filter.SystemDepartmentFilterDTO" resultMap="SystemDepartmentResult">
+        <include refid="selectSystemDepartmentVo"/>
+        left join system_user_base as user1 on department.leader_id = user1.id
+        <where>
+            department.deleted_flag = 'N' and department.status = 1
+            <if test="remark != null  and remark != ''"> and department.remark = #{remark}</if>
+            <if test="deptCode != null  and deptCode != ''"> and department.dept_code = #{deptCode}</if>
+            <if test="deptName != null  and deptName != ''"> and department.dept_name like concat('%', #{deptName}, '%')</if>
+            <if test="orderNum != null "> and department.order_num = #{orderNum}</if>
+            <if test="leaderId != null  and leaderId != ''"> and department.leader_id = #{leaderId}</if>
+            <if test="status != null "> and department.status = #{status}</if>
+            <if test="organizationId != null  and organizationId != ''"> and department.organization_id = #{organizationId}</if>
+            <if test="synFlag != null  and synFlag != ''"> and department.syn_flag = #{synFlag}</if>
+            <if test="synId != null  and synId != ''"> and department.syn_id = #{synId}</if>
+        </where>
+    </select>
+
+    <resultMap type="com.privernal.system.dto.SystemDepartmentDTO" id="SystemDepartmentDTO">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="deptCode"    column="dept_code"    />
+        <result property="deptName"    column="dept_name"    />
+        <result property="orderNum"    column="order_num"    />
+        <result property="leaderId"    column="leader_id"    />
+        <result property="leaderName"    column="leader_name"    />
+        <result property="status"    column="status"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="synFlag"    column="syn_flag"    />
+        <result property="synId"    column="syn_id"    />
+        <result property="parentId"    column="parent_id"    />
+    </resultMap>
+    <select id="selectSystemDepartmentListByIds"  resultMap="SystemDepartmentDTO">
+        select department.tenant_id, department.revision, department.created_by, department.created_time, department.updated_by, department.updated_time,
+        department.deleted_flag, department.deleted_by, department.deleted_time,
+        department.id, department.remark, department.dept_code, department.dept_name, department.order_num, department.leader_id, department.status ,user1.nick_name as leader_name,
+        department.organization_id,department.syn_flag,department.syn_id
+        from system_department as department
+        left join system_user_base as user1 on department.leader_id = user1.id
+        <where>
+            department.deleted_flag = 'N' and  department.status = 1
+            and department.id in
+            <foreach collection="deptList" item="deptId" open="(" separator="," close=")">
+                #{deptId}
+            </foreach>
+        </where>
+    </select>
+
+    <select id="selectDepartmentByOrganizationId"  resultMap="SystemDepartmentDTO">
+        select
+        department.deleted_flag,
+        department.id, department.remark, department.dept_code, department.dept_name, department.order_num, department.leader_id, department.status ,user1.nick_name as leader_name,
+        department.organization_id,department.syn_flag,department.syn_id,deptRelation.parent_id
+        from system_department as department
+        left join system_user_base as user1 on department.leader_id = user1.id
+        <!-- 关系行的有效性放进 join 条件：没有 dept_relation 的历史部门也要出现在树里（parent_id 为空，由上层按顶级处理） -->
+        left join  system_dept_relation as deptRelation on department.id = deptRelation.dept_id and deptRelation.level = 1 and deptRelation.deleted_flag = 'N'
+        <where>
+            department.deleted_flag = 'N'
+            <if test="remark != null  and remark != ''"> and department.remark = #{remark}</if>
+            <if test="deptCode != null  and deptCode != ''"> and department.dept_code = #{deptCode}</if>
+            <if test="deptName != null  and deptName != ''"> and department.dept_name like concat('%', #{deptName}, '%')</if>
+            <if test="orderNum != null "> and department.order_num = #{orderNum}</if>
+            <if test="leaderId != null  and leaderId != ''"> and department.leader_id = #{leaderId}</if>
+            <if test="status != null "> and department.status = #{status}</if>
+            <if test="organizationId != null  and organizationId != ''"> and department.organization_id = #{organizationId}</if>
+            <if test="synFlag != null  and synFlag != ''"> and department.syn_flag = #{synFlag}</if>
+            <if test="synId != null  and synId != ''"> and department.syn_id = #{synId}</if>
+        </where>
+    </select>
+
+</mapper>

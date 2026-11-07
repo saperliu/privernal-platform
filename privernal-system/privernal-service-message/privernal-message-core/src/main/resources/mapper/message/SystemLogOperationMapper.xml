@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.message.mapper.SystemLogOperationMapper">
+
+    <resultMap type="com.privernal.message.dto.SystemLogOperationDTO" id="SystemLogOperationResult">
+
+        <result property="tenantId" column="tenant_id"/>
+
+        <result property="revision" column="revision"/>
+
+        <result property="createdBy" column="created_by"/>
+
+        <result property="createdTime" column="created_time"/>
+
+        <result property="updatedBy" column="updated_by"/>
+
+        <result property="updatedTime" column="updated_time"/>
+
+        <result property="deletedBy" column="deleted_by"/>
+
+        <result property="deletedTime" column="deleted_time"/>
+
+        <result property="deletedFlag" column="deleted_flag"/>
+
+        <result property="id" column="id"/>
+
+        <result property="remark" column="remark"/>
+
+        <result property="name" column="name"/>
+
+        <result property="operationType" column="operation_type"/>
+
+        <result property="method" column="method"/>
+
+        <result property="requestMethod" column="request_method"/>
+
+        <result property="businessType" column="business_type"/>
+
+        <result property="operationUrl" column="operation_url"/>
+
+        <result property="operationIp" column="operation_ip"/>
+
+        <result property="operationLocation" column="operation_location"/>
+
+        <result property="operationParam" column="operation_param"/>
+
+        <result property="operationResult" column="operation_result"/>
+
+        <result property="status" column="status"/>
+
+        <result property="operationPerson" column="operation_person"/>
+
+        <result property="message" column="message"/>
+
+        <result property="organizationId" column="organization_id"/>
+
+        <result property="departmentId" column="department_id"/>
+    </resultMap>
+
+    <sql id="selectSystemLogOperationVo">
+        select systemLogOperation.tenant_id,
+               systemLogOperation.revision,
+               systemLogOperation.created_by,
+               systemLogOperation.created_time,
+               systemLogOperation.updated_by,
+               systemLogOperation.updated_time,
+               systemLogOperation.deleted_by,
+               systemLogOperation.deleted_time,
+               systemLogOperation.deleted_flag,
+               systemLogOperation.id,
+               systemLogOperation.remark,
+               systemLogOperation.name,
+               systemLogOperation.operation_type,
+               systemLogOperation.method,
+               systemLogOperation.request_method,
+               systemLogOperation.business_type,
+               systemLogOperation.operation_url,
+               systemLogOperation.operation_ip,
+               systemLogOperation.operation_location,
+               systemLogOperation.operation_param,
+               systemLogOperation.operation_result,
+               systemLogOperation.status,
+               systemLogOperation.operation_person,
+               systemLogOperation.message,
+               systemLogOperation.organization_id,
+               systemLogOperation.department_id
+        from system_log_operation as systemLogOperation
+    </sql>
+
+    <select id="selectSystemLogOperationList" parameterType="com.privernal.message.filter.SystemLogOperationFilterDTO" resultMap="SystemLogOperationResult">
+        <include refid="selectSystemLogOperationVo"/>
+        <where>
+            systemLogOperation.deleted_flag = 'N'
+            <if test="remark != null  and remark != ''">and systemLogOperation.remark = #{remark}</if>
+            <if test="name != null  and name != ''">and systemLogOperation.name like concat('%', #{name}, '%')</if>
+            <if test="operationType != null  and operationType != ''">and systemLogOperation.operation_type =
+                #{operationType}
+            </if>
+            <if test="method != null  and method != ''">and systemLogOperation.method = #{method}</if>
+            <if test="requestMethod != null  and requestMethod != ''">and systemLogOperation.request_method =
+                #{requestMethod}
+            </if>
+            <if test="businessType != null  and businessType != ''">and systemLogOperation.business_type =
+                #{businessType}
+            </if>
+            <if test="operationUrl != null  and operationUrl != ''">and systemLogOperation.operation_url =
+                #{operationUrl}
+            </if>
+            <if test="operationIp != null  and operationIp != ''">and systemLogOperation.operation_ip = #{operationIp}
+            </if>
+            <if test="operationLocation != null  and operationLocation != ''">and systemLogOperation.operation_location
+                = #{operationLocation}
+            </if>
+            <if test="operationParam != null  and operationParam != ''">and systemLogOperation.operation_param =
+                #{operationParam}
+            </if>
+            <if test="operationResult != null  and operationResult != ''">and systemLogOperation.operation_result =
+                #{operationResult}
+            </if>
+            <if test="status != null ">and systemLogOperation.status = #{status}</if>
+            <if test="operationPerson != null  and operationPerson != ''">and systemLogOperation.operation_person =
+                #{operationPerson}
+            </if>
+            <if test="message != null  and message != ''">and systemLogOperation.message like concat('%', #{message},
+                '%')
+            </if>
+            <if test="organizationId != null  and organizationId != ''">and systemLogOperation.organization_id =
+                #{organizationId}
+            </if>
+            <if test="departmentId != null  and departmentId != ''">and systemLogOperation.department_id =
+                #{departmentId}
+            </if>
+            <if test="parameters.beginDate != null and parameters.beginDate != '' and parameters.endDate != null and parameters.endDate != ''">
+                and systemLogOperation.created_time between #{parameters.beginDate} and  #{parameters.endDate}
+            </if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    systemLogOperation.remark like concat('%', #{item}, '%')
+                    or systemLogOperation.operation_person like concat('%', #{item}, '%')
+                    or  systemLogOperation.name like concat('%', #{item}, '%')
+                    or systemLogOperation.message like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by systemLogOperation.created_time desc
+    </select>
+
+
+</mapper>

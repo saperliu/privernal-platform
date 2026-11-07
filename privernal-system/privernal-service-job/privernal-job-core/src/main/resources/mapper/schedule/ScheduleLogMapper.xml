@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.job.mapper.ScheduleLogMapper">
+
+    <!-- 时间条件一律用 fire_time（分区键口径，§6.2；SQLite 模式无分区，仅作时间索引口径）；
+         不用 start_time 跨分区扫。方言差异统一走 privernal.dialect 片段。 -->
+
+    <select id="selectScheduleLogList" resultType="com.privernal.job.domain.SystemScheduleTaskLog">
+        SELECT * FROM system_schedule_task_log
+        <where>
+            <if test="filter.organizationId != null and filter.organizationId != ''">
+                organization_id = #{filter.organizationId}
+            </if>
+            <if test="filter.taskId != null and filter.taskId != ''">
+                AND task_id = #{filter.taskId}
+            </if>
+            <if test="filter.status != null and filter.status != ''">
+                AND status = #{filter.status}
+            </if>
+            <if test="filter.source != null and filter.source != ''">
+                AND source = #{filter.source}
+            </if>
+            <if test="filter.fireTimeBegin != null and filter.fireTimeBegin != ''">
+                AND fire_time &gt;= #{filter.fireTimeBegin}
+            </if>
+            <if test="filter.fireTimeEnd != null and filter.fireTimeEnd != ''">
+                AND fire_time &lt;= CONCAT(#{filter.fireTimeEnd}, '.999')
+            </if>
+        </where>
+        ORDER BY fire_time DESC, id DESC
+    </select>
+
+    <select id="selectScheduleLogById" resultType="com.privernal.job.domain.SystemScheduleTaskLog">
+        SELECT * FROM system_schedule_task_log WHERE id = #{id} LIMIT 1
+    </select>
+
+    <update id="updateLogResult">
+        UPDATE system_schedule_task_log
+        SET status = #{status}, end_time = <include refid="privernal.dialect.now3"/>, cost_ms = #{costMs},
+            error_msg = #{errorMsg}, result_digest = #{resultDigest}
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectMaxAttempt" resultType="java.lang.Integer">
+        SELECT MAX(attempt) FROM system_schedule_task_log
+        WHERE task_id = #{taskId} AND fire_time = #{fireTime}
+    </select>
+
+    <select id="selectLogByUniqueId" resultType="com.privernal.job.domain.SystemScheduleTaskLog">
+        SELECT * FROM system_schedule_task_log
+        WHERE task_id = #{taskId} AND fire_time = #{fireTime} AND attempt = #{attempt}
+        LIMIT 1
+    </select>
+
+    <!-- 实例心跳 upsert：结构性差异必须成对（改一处必查另一处）。
+         MySQL：ON DUPLICATE KEY UPDATE + VALUES()；SQLite：ON CONFLICT(instance_id) DO UPDATE + excluded -->
+    <insert id="heartbeatInstance" parameterType="com.privernal.job.domain.SystemScheduleInstance" databaseId="mysql">
+        INSERT INTO system_schedule_instance (instance_id, role, lease_until, start_time, stat_json)
+        VALUES (#{instanceId}, #{role}, <include refid="privernal.dialect.leasePlus30"/>, #{startTime}, #{statJson})
+        ON DUPLICATE KEY UPDATE
+            role = VALUES(role), lease_until = <include refid="privernal.dialect.leasePlus30"/>, stat_json = VALUES(stat_json)
+    </insert>
+    <insert id="heartbeatInstance" parameterType="com.privernal.job.domain.SystemScheduleInstance" databaseId="sqlite">
+        INSERT INTO system_schedule_instance (instance_id, role, lease_until, start_time, stat_json)
+        VALUES (#{instanceId}, #{role}, <include refid="privernal.dialect.leasePlus30"/>, #{startTime}, #{statJson})
+        ON CONFLICT(instance_id) DO UPDATE SET
+            role = excluded.role,
+            lease_until = <include refid="privernal.dialect.leasePlus30"/>,
+            stat_json = excluded.stat_json
+    </insert>
+
+    <select id="selectInstanceList" resultType="com.privernal.job.domain.SystemScheduleInstance">
+        SELECT * FROM system_schedule_instance ORDER BY start_time
+    </select>
+
+    <delete id="deleteInstance">
+        DELETE FROM system_schedule_instance WHERE instance_id = #{instanceId}
+    </delete>
+
+    <select id="selectLockState" resultType="java.util.HashMap">
+        SELECT lock_key AS lockKey, holder, lease_until AS leaseUntil, version
+        FROM system_schedule_lock ORDER BY lock_key
+    </select>
+
+    <delete id="purgeStaleInstances">
+        DELETE FROM system_schedule_instance WHERE lease_until &lt; <include refid="privernal.dialect.now3MinusSecondsParam"/>
+    </delete>
+
+    <!-- 启动补齐锁行：行被清后抢主 UPDATE 影响 0 行=静默全瘫，幂等补齐；
+         MySQL INSERT IGNORE / SQLite ON CONFLICT DO NOTHING -->
+    <insert id="ensureLockRows" databaseId="mysql">
+        INSERT IGNORE INTO system_schedule_lock (lock_key, holder, lease_until, version) VALUES
+            ('scheduler',               NULL, '1970-01-01 00:00:00.000', 0),
+            ('log-partition',           NULL, '1970-01-01 00:00:00.000', 0),
+            ('quota-check',             NULL, '1970-01-01 00:00:00.000', 0),
+            ('flow-timeout-reconcile',  NULL, '1970-01-01 00:00:00.000', 0),
+            ('outbox-compensate',       NULL, '1970-01-01 00:00:00.000', 0),
+            ('call-log-purge',          NULL, '1970-01-01 00:00:00.000', 0),
+            ('column-snapshot-refresh', NULL, '1970-01-01 00:00:00.000', 0)
+    </insert>
+    <insert id="ensureLockRows" databaseId="sqlite">
+        INSERT INTO system_schedule_lock (lock_key, holder, lease_until, version) VALUES
+            ('scheduler',               NULL, '1970-01-01 00:00:00.000', 0),
+            ('log-partition',           NULL, '1970-01-01 00:00:00.000', 0),
+            ('quota-check',             NULL, '1970-01-01 00:00:00.000', 0),
+            ('flow-timeout-reconcile',  NULL, '1970-01-01 00:00:00.000', 0),
+            ('outbox-compensate',       NULL, '1970-01-01 00:00:00.000', 0),
+            ('call-log-purge',          NULL, '1970-01-01 00:00:00.000', 0),
+            ('column-snapshot-refresh', NULL, '1970-01-01 00:00:00.000', 0)
+        ON CONFLICT DO NOTHING
+    </insert>
+
+    <!-- 分区自检/滚动是 MySQL 专属能力；SQLite 模式由 ScheduleKernel.supportsLogPartitions() 整体跳过，
+         此处保留 MySQL 口径（方言探针直接拦在调用方，本 SQL 不会在 SQLite 上执行） -->
+    <select id="selectLogPartitionNames" resultType="java.lang.String">
+        SELECT PARTITION_NAME FROM INFORMATION_SCHEMA.PARTITIONS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'system_schedule_task_log'
+          AND PARTITION_NAME IS NOT NULL
+        ORDER BY PARTITION_ORDINAL_POSITION
+    </select>
+
+    <!-- DDL 无参数化占位可用，name/upperBound 均由内核按 yyyyMM/日期规则生成（非用户输入） -->
+    <update id="addLogPartition">
+        ALTER TABLE system_schedule_task_log ADD PARTITION (
+        PARTITION ${name} VALUES LESS THAN ('${upperBound}'))
+    </update>
+
+    <update id="dropLogPartition">
+        ALTER TABLE system_schedule_task_log DROP PARTITION ${name}
+    </update>
+
+    <select id="selectDefaultOrganizationId" resultType="java.lang.String">
+        SELECT id FROM system_organization WHERE deleted_flag = 'N' ORDER BY created_time ASC LIMIT 1
+    </select>
+
+    <select id="selectLogStatusCountsLastHour" resultType="java.util.HashMap">
+        SELECT status, COUNT(*) AS cnt
+        FROM system_schedule_task_log
+        WHERE fire_time &gt;= <include refid="privernal.dialect.now3Minus1Hour"/>
+        GROUP BY status
+    </select>
+
+    <insert id="insertMetricSnapshots">
+        INSERT INTO system_schedule_metric_snapshot (metric_name, tag_outcome, statistic, value, snap_time)
+        VALUES
+        <foreach collection="samples" item="s" separator=",">
+            (#{s.metricName}, #{s.tagOutcome}, #{s.statistic}, #{s.value}, <include refid="privernal.dialect.now3"/>)
+        </foreach>
+    </insert>
+
+    <select id="selectMetricSnapshots" resultType="java.util.HashMap">
+        SELECT metric_name AS metricName, tag_outcome AS tagOutcome, statistic, value, snap_time AS snapTime
+        FROM system_schedule_metric_snapshot
+        WHERE snap_time &gt;= <include refid="privernal.dialect.now3MinusMinutesParam"/>
+        ORDER BY snap_time ASC
+    </select>
+
+    <delete id="purgeMetricSnapshots">
+        DELETE FROM system_schedule_metric_snapshot WHERE snap_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/>
+    </delete>
+
+    <!-- 只统计执行链（attempt>0）；跳过行不参与失败率 -->
+    <select id="selectAppFailureStatsLastHour" resultType="java.util.HashMap">
+        SELECT app_id AS appId,
+               COUNT(*) AS total,
+               SUM(CASE WHEN status IN ('FAILED', 'TIMEOUT') THEN 1 ELSE 0 END) AS failed
+        FROM system_schedule_task_log
+        WHERE fire_time &gt;= <include refid="privernal.dialect.now3Minus1Hour"/> AND attempt &gt; 0
+        GROUP BY app_id
+    </select>
+
+    <select id="selectLatestRunningLog" resultType="com.privernal.job.domain.SystemScheduleTaskLog">
+        SELECT * FROM system_schedule_task_log WHERE task_id = #{taskId} AND status = 'RUNNING'
+        ORDER BY id DESC LIMIT 1
+    </select>
+
+    <!-- 物理删：MP 全局逻辑删会把 wrapper-delete 改写成 UPDATE deleted_flag，留存即落空。
+         DELETE ... LIMIT 为 MySQL 专属；SQLite 改 id IN (子查询) -->
+    <delete id="purgeOpenapiCallLog" databaseId="mysql">
+        DELETE FROM system_openapi_call_log WHERE created_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/> LIMIT #{limit}
+    </delete>
+    <delete id="purgeOpenapiCallLog" databaseId="sqlite">
+        DELETE FROM system_openapi_call_log WHERE id IN (
+            SELECT id FROM system_openapi_call_log
+            WHERE created_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/>
+            LIMIT #{limit}
+        )
+    </delete>
+
+    <delete id="purgeWebhookEvents" databaseId="mysql">
+        DELETE FROM system_webhook_event
+        WHERE status != 'PENDING' AND created_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/>
+        LIMIT #{limit}
+    </delete>
+    <delete id="purgeWebhookEvents" databaseId="sqlite">
+        DELETE FROM system_webhook_event WHERE id IN (
+            SELECT id FROM system_webhook_event
+            WHERE status != 'PENDING' AND created_time &lt; <include refid="privernal.dialect.nowMinusDaysParam"/>
+            LIMIT #{limit}
+        )
+    </delete>
+
+</mapper>

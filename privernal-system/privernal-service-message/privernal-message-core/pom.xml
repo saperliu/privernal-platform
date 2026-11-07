@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>com.privernal</groupId>
+        <artifactId>privernal-service-message</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>privernal-message-core</artifactId>
+
+    <description>
+        消息核心模块
+    </description>
+
+    <dependencies>
+
+
+        <!-- SpringBoot Actuator -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- SpringBoot Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-tomcat</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-undertow</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+        </dependency>
+        <!-- Xvri Common DataSource -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-datasource</artifactId>
+        </dependency>
+
+        <!-- Xvri Common DataScope -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-datascope</artifactId>
+        </dependency>
+
+        <!-- Xvri Common Log -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-log</artifactId>
+        </dependency>
+
+        <!-- Xvri Common Mybatis -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-mybatis</artifactId>
+        </dependency>
+        <!-- Xvri Common web -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-web</artifactId>
+        </dependency>
+
+        <!-- Xvri Common web -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-security</artifactId>
+        </dependency>
+        <!-- Api System  -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-message-api</artifactId>
+        </dependency>
+
+        <!-- Xvri Api System -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-system-api</artifactId>
+        </dependency>
+
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+
+        <!-- socketio 应用-->
+        <dependency>
+            <groupId>com.corundumstudio.socketio</groupId>
+            <artifactId>netty-socketio</artifactId>
+        </dependency>
+
+        <!-- EMAS 消息推送 -->
+        <dependency>
+            <groupId>com.aliyun</groupId>
+            <artifactId>aliyun-java-sdk-push</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.aliyun</groupId>
+            <artifactId>aliyun-java-sdk-core</artifactId>
+        </dependency>
+
+        <!--各种小工具集合-->
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+        </dependency>
+
+        <!--
+          握手鉴权与连接数治理是安全判据，必须能在不起服务的情况下被测到。
+          surefire 固定 2.22.2，必须显式声明 junit-jupiter 与 junit-platform-launcher 才能发现测试：
+          少了 launcher 时引擎与启动器版本错位，surefire 只报一句
+          "TestEngine with ID 'junit-jupiter' failed to discover tests"，然后 Tests run: 0 且 BUILD SUCCESS，
+          看起来像全绿。与 privernal-file-api / privernal-dynamic-core 同一组写法。
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

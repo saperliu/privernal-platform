@@ -1,0 +1,14 @@
+
+
+88888888ba               88                                                                88      ad88888ba                                88  88
+88      "8b              ""                                                                88     d8"     "8b  ,d                           88  ""
+88      ,8P                                                                                88     Y8,          88                           88
+88aaaaaa8P'  8b,dPPYba,  88  8b       d8   ,adPPYba,  8b,dPPYba,  8b,dPPYba,   ,adPPYYba,  88     `Y8aaaaa,  MM88MMM  88       88   ,adPPYb,88  88   ,adPPYba,
+88""""""'    88P'   "Y8  88  `8b     d8'  a8P_____88  88P'   "Y8  88P'   `"8a  ""     `Y8  88       `"""""8b,  88     88       88  a8"    `Y88  88  a8"     "8a
+88           88          88   `8b   d8'   8PP"""""""  88          88       88  ,adPPPPP88  88             `8b  88     88       88  8b       88  88  8b       d8
+88           88          88    `8b,d8'    "8b,   ,aa  88          88       88  88,    ,88  88     Y8a     a8P  88,    "8a,   ,a88  "8a,   ,d88  88  "8a,   ,a8"
+88           88          88      "8"       `"Ybbd8"'  88          88       88  `"8bbdP"Y8  88      "Y88888P"   "Y888   `"YbbdP'Y8   `"8bbdP"Y8  88   `"YbbdP"'
+
+
+${spring.application.name}  v${application.version}
+Spring Boot ${spring-boot.version}  |  profile: ${spring.profiles.active:default}

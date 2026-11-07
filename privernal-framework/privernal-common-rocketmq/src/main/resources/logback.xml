@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="60 seconds" debug="false">
+    <!-- 日志存放路径 -->
+	<property name="log.path" value="logs/rocketmq-log" />
+   <!-- 日志输出格式 -->
+	<property name="log.pattern" value="%d{HH:mm:ss.SSS} [%thread] %-5level %logger{20} - [%method,%line] - %msg%n" />
+
+    <appender name="RocketmqClientAppender" class="ch.qos.logback.core.rolling.RollingFileAppender">
+	    <file>${log.path}/rocket-client.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <FileNamePattern>${log.path}/rocket-client-%d{yyyy-MM-dd}.%i.log</FileNamePattern>
+            <!-- 日志文件最大尺寸 -->
+            <maxFileSize>200MB</maxFileSize>
+            <!--日志文件保留天数-->
+            <MaxHistory>3</MaxHistory>
+        </rollingPolicy>
+        <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+              <maxFileSize>100MB</maxFileSize>
+        </triggeringPolicy>
+        <encoder>
+            <pattern>${log.pattern}</pattern>
+            <charset class="java.nio.charset.Charset">UTF-8</charset>
+        </encoder>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <!-- 过滤的级别 -->
+            <level>ERROR</level>
+			<!-- 匹配时的操作：接收（记录） -->
+            <onMatch>ACCEPT</onMatch>
+			<!-- 不匹配时的操作：拒绝（不记录） -->
+            <onMismatch>DENY</onMismatch>
+        </filter>
+    </appender>
+
+    <!-- 系统模块日志级别控制  -->
+    <logger name="RocketmqClient" additivity="false">
+    <!-- 这里可以按需配置日志级别 -->
+    <level value="ERROR" />
+    <appender-ref ref="RocketmqClientAppender"/>
+    </logger>
+</configuration>

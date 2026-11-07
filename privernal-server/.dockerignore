@@ -1,0 +1,23 @@
+# 构建上下文为 privernal-server/ 时的忽略清单。
+# 只保留打包产物 needed 的部分，避免把源码、日志与本机配置塞进镜像上下文。
+
+# 构建产物中除 jar 外都不需要
+**/classes/
+**/generated-sources/
+**/generated-test-sources/
+**/maven-status/
+**/*.original
+
+# 本机的真实配置绝不进镜像（里面是明文口令）
+application-local.yaml
+application-dev.yaml
+
+# 日志与临时文件
+logs/
+*.log
+.DS_Store
+
+# 版本控制与 IDE
+.git/
+.idea/
+*.iml

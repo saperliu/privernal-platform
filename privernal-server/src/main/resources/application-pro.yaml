@@ -1,0 +1,224 @@
+# ============================================================================
+# 生产环境配置（启动参数 --spring.profiles.active=pro 生效）
+#
+# 约定：
+#   1. 所有环境相关 / 敏感参数均支持环境变量覆盖，格式 ${环境变量:默认值}；
+#   2. 默认值按「单机全家桶」给出（MySQL/Redis 本机、本地磁盘上传），
+#      分离部署时仅需覆盖对应变量，不必改本文件；
+#   3. 与本地开发差异：关闭 Druid 监控页与 Swagger、验证码开启、
+#      socketio 监听 0.0.0.0、上传目录指向 /data。
+# ============================================================================
+
+spring:
+  data:
+    redis:
+      # 业务缓存 Redis（验证码答案、字典/菜单缓存等）
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+
+  datasource:
+    druid:
+      stat-view-servlet:
+        # Druid 连接池监控页（/druid/**）。生产默认关闭；开启后务必设置独立口令
+        enabled: ${DRUID_STAT_ENABLED:false}
+        loginUsername: ${DRUID_STAT_USER:admin}
+        loginPassword: ${DRUID_STAT_PASSWORD:change-me}
+    dynamic:
+      primary: master
+      # 指定库名却找不到对应数据源时直接抛错。默认的 false 会静默回落 master，
+      # 把业务数据写进主库且不给任何提示，排查代价远高于一次显式失败
+      strict: true
+      druid:
+        # 连接池参数：初始/最小空闲连接数
+        initial-size: 5
+        min-idle: 5
+        # 最大活跃连接数（并发不足时调大，注意 MySQL max_connections）
+        maxActive: 20
+        # 获取连接最大等待毫秒数，超时抛异常
+        maxWait: 60000
+        timeBetweenEvictionRunsMillis: 60000
+        minEvictableIdleTimeMillis: 300000
+        validationQuery: SELECT 1 FROM DUAL
+        testWhileIdle: true
+        testOnBorrow: false
+        testOnReturn: false
+        poolPreparedStatements: true
+        maxPoolPreparedStatementPerConnectionSize: 20
+        filters: stat,slf4j
+      datasource:
+        # 主库数据源（平台库，初始化脚本 release/sql/init.sql 所建）
+        master:
+          driver-class-name: com.mysql.cj.jdbc.Driver
+          url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:dynamic_platform}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=${MYSQL_USE_SSL:false}&serverTimezone=${MYSQL_TIMEZONE:GMT%2B8}
+          username: ${MYSQL_USERNAME:root}
+          password: ${MYSQL_PASSWORD:}
+            # 从库数据源（读写分离时放开，并把 dynamic.primary 指向需要的库）
+            # slave:
+            # username:
+            # password:
+          # url:
+          # driver-class-name:
+      # seata: true    # 开启 seata 代理，开启后默认每个数据源都代理，如果某个不需要代理可单独关闭
+
+# 生产关闭在线接口文档（如需临时排查可环境变量 SPRINGDOC_ENABLED=true 打开）
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_ENABLED:false}
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:false}
+    path: /swagger-ui
+
+privernal:
+  # 上传文件使用的方式（LOCAL=本地磁盘保存，OSS=阿里云对象存储，MINIO=MinIO）
+  # 切换 OSS/MINIO 后，对应下方 oss: / minio: 段的密钥必须配置
+  upload:
+    type: ${UPLOAD_TYPE:LOCAL}
+  # 阿里云短信通道（登录短信验证码 / 找回密码；不使用短信登录可不配）
+  sms:
+    endpoint: ${SMS_ENDPOINT:dysmsapi.aliyuncs.com}
+    region: ${SMS_REGION:cn-beijing}
+    signName: ${SMS_SIGN_NAME:}
+    accessKeyId: ${SMS_ACCESS_KEY_ID:}
+    accessKeySecret: ${SMS_ACCESS_KEY_SECRET:}
+    loginTemplateCode: ${SMS_LOGIN_TEMPLATE_CODE:}
+  # 苹果授权登录（App 端 Sign in with Apple；不接 iOS 可不配）
+  apple:
+    keyId: ${APPLE_KEY_ID:}
+    keySecret: ${APPLE_KEY_SECRET:}
+    # 接入 Sign in with Apple 的应用 Bundle ID 与开发者 Team ID
+    client-id: ${APPLE_CLIENT_ID:}
+    team-id: ${APPLE_TEAM_ID:}
+
+  # IP 归属地查询：离线 xdb 数据文件路径，支持 file: 与 classpath: 前缀。
+  # 留空则不启用（登录日志的地址列记为「未知」）。数据文件需自备，见 sql/README.md 与 NOTICE.md。
+  ip-region:
+    db-path: ${IP_REGION_DB_PATH:}
+
+# Sa-Token 登录态配置
+sa-token:
+  # token名称 (同时也是cookie名称)，前端请求头 Authorization: Bearer <token>
+  token-name: Authorization
+  token-prefix: Bearer
+  token-session-check-login: false
+  # token有效期，单位s（默认7天）
+  timeout: 604800
+  # token临时有效期 (指定时间内无操作就视为token过期) 单位: 秒；-1 代表不启用
+  active-timeout: -1
+  # 是否允许同一账号并发登录 (为true时允许一起登录, 为false时新登录挤掉旧登录)
+  is-concurrent: true
+  # 在多人登录同一账号时，是否共用一个token
+  is-share: true
+  # token风格
+  token-style: uuid
+  # 是否输出操作日志
+  is-log: false
+  # Sa-Token 独立 Redis（与业务缓存分库，避免 token 与业务键互相冲刷）
+  alone-redis:
+    database: ${SA_TOKEN_REDIS_DATABASE:5}
+    host: ${REDIS_HOST:127.0.0.1}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    timeout: 10s
+
+# 登录验证码（math=算术题图片验证码）；生产建议开启，关闭仅限内网受控环境
+security:
+  captcha:
+    type: math
+    enabled: ${CAPTCHA_ENABLED:true}
+
+# Socket.IO 长连接（消息推送 / 待办提醒），nginx 需要把 /socket/ 升级代理到该端口
+socketio:
+  application:
+    name: socket-service
+  reg-server: ${SOCKETIO_REG_SERVER:127.0.0.1}
+  host: ${SOCKETIO_HOST:0.0.0.0}
+  port: ${SOCKETIO_PORT:16001}
+  context: /socket
+  # 大屏实时节拍通道（M6.5）：只下发频道名/时间戳/序号，业务数据一律仍走 HTTP 取。
+  # 生产默认关，需要实时大屏再用 SOCKETIO_TICK_ENABLED=true 打开；关掉时节拍线程根本不启动。
+  # 五项上限显式写出，不让容量藏在代码默认值里。
+  tick:
+    enabled: ${SOCKETIO_TICK_ENABLED:false}
+    # 节拍下限：比这更快只会把库打穿，观众看不出差别（取数仍走 HTTP，节拍只决定刷新频率）
+    min-interval-seconds: ${SOCKETIO_TICK_MIN_INTERVAL:5}
+    # 扫描间隔：节拍本身的最小粒度，1 秒足够
+    scan-millis: ${SOCKETIO_TICK_SCAN_MILLIS:1000}
+    # 单会话最多订阅几个频道，防一块组件过多的屏把频道表占满
+    max-channels-per-session: ${SOCKETIO_TICK_MAX_CHANNELS_PER_SESSION:8}
+    # 单频道最多多少个会话在听，超过即拒绝后来的观众
+    max-sessions-per-channel: ${SOCKETIO_TICK_MAX_SESSIONS_PER_CHANNEL:500}
+    # 全局频道总数：节拍线程每拍都要遍历一遍，是 CPU 的直接上限
+    max-channels: ${SOCKETIO_TICK_MAX_CHANNELS:200}
+  # 连接总量闸门：代码默认 0 = 不限制，生产不留不限制档，否则断线重连留下的僵尸会话会一路涨
+  # 每人常驻连接数：一个人常开 3~4 个页（后台 + 大屏 + 手机），再多基本是僵尸；超出驱逐最旧的那条
+  max-sessions-per-user: ${SOCKETIO_MAX_SESSIONS_PER_USER:6}
+  # 单实例连接总数：workCount=100 下每条连接都是常驻的，量级按「在线人数 × 页签数」算而不是按屏数算
+  max-connections: ${SOCKETIO_MAX_CONNECTIONS:2000}
+  # 单帧最大数据量，防大包攻击
+  maxFramePayloadLength: 1048576
+  maxHttpContentLength: 1048576
+  bossCount: 1
+  workCount: 100
+  allowCustomRequests: true
+  # HTTP→WS 升级超时（毫秒）
+  upgradeTimeout: 100000
+  # 心跳超时（毫秒）
+  pingTimeout: 6000000
+  # 心跳间隔（毫秒）
+  pingInterval: 25000
+
+app:
+  # 运行环境标识（PROD/DEV，影响行为分支与日志埋点）
+  env: ${APP_ENV:PROD}
+  ios:
+    app-key: ${APP_IOS_KEY:}
+  android:
+    app-key: ${APP_ANDROID_KEY:}
+
+# 本地磁盘上传（UPLOAD_TYPE=LOCAL 时生效）
+#   path    文件落盘目录（nginx 需将其以 <prefix> 静态映射出去）
+#   domain  回显地址前缀：指向 nginx，经 /api/file 前缀剥掉后转发到 8600 的 /statics
+#   prefix  后端静态资源映射前缀（与 LocalConfig 对应，一般不改）
+file:
+  domain: ${FILE_DOMAIN:http://localhost/api/file}
+  path: ${FILE_PATH:/data/privernal/upload}
+  prefix: /statics
+
+# 对象存储：MinioClient 启动时无条件由 oss. 段装配（LOCAL 模式不会真正使用它），
+# endpoint/密钥留空会直接启动失败，因此默认给本地 MinIO 出厂占位值。
+# UPLOAD_TYPE=OSS：换成阿里云真实 endpoint 与密钥；
+# UPLOAD_TYPE=MINIO：把 OSS_ENDPOINT 指到 MinIO 地址（如 http://127.0.0.1:9000）即可，客户端同源。
+oss:
+  endpoint: ${OSS_ENDPOINT:http://127.0.0.1:9000}
+  accessKeyId: ${OSS_ACCESS_KEY_ID:minioadmin}
+  accessKeySecret: ${OSS_ACCESS_KEY_SECRET:minioadmin}
+  bucket: ${OSS_BUCKET:privernal}
+  path: ${OSS_PATH:images}
+  net-path: ${OSS_NET_PATH:}
+
+# 免登清单（R7）：pro 显式声明完整清单，不继承基础配置的文档/监控端点。
+# actuator 仅供 Prometheus 抓取，网络暴露面仍须由网关/运维侧控制。
+ignore:
+  whites:
+    - /favicon.ico
+    - /auth/logout
+    - /auth/login
+    - /auth/login/challenge
+    - /auth/organization/**
+    - /auth/callback/**
+    - /auth/render/**
+    - /auth/sms/**
+    - /auth/reset/password
+    - /app/system/defaultConfig/net/list
+    - /auth/code
+    - /socket/**
+    - /statics/**
+    - /warm-flow-ui/**
+    - /openapi/**
+    - /auth/oidc/**
+    - /pub/**
+    # Prometheus 抓取端点：免登 GET，网络暴露面由运维侧控制
+    - /actuator/**

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+    跨模块方言片段（纯 <sql> 片段，无语句）：每个片段按 databaseId 成对声明，
+    运行时由 MyBatis 按 VendorDatabaseIdProvider 探测出的 databaseId（mysql/sqlite）
+    只注册匹配变体，业务 mapper 用 <include refid="privernal.dialect.xxx"/> 引用。
+
+    时间口径（TEXT 列同一字典序）：
+    - SQLite：datetime('now','localtime') / strftime('%Y-%m-%d %H:%M:%f',...)（毫秒）
+    - MySQL ：NOW() / NOW(3)
+    Java 侧由 SqliteDateTypeHandler/SqliteLocalDateTimeTypeHandler 统一写空格格式。
+-->
+<mapper namespace="privernal.dialect">
+
+    <!-- 毫秒级当前时间（调度租约/心跳口径） -->
+    <sql id="now3" databaseId="mysql">NOW(3)</sql>
+    <sql id="now3" databaseId="sqlite">strftime('%Y-%m-%d %H:%M:%f','now','localtime')</sql>
+
+    <!-- 秒级当前时间 -->
+    <sql id="nowS" databaseId="mysql">NOW()</sql>
+    <sql id="nowS" databaseId="sqlite">datetime('now','localtime')</sql>
+
+    <!-- 租约 +30s（调度锁 30s 续约口径） -->
+    <sql id="leasePlus30" databaseId="mysql">NOW(3) + INTERVAL 30 SECOND</sql>
+    <sql id="leasePlus30" databaseId="sqlite">strftime('%Y-%m-%d %H:%M:%f','now','localtime','+30 seconds')</sql>
+
+    <!-- 租约 +60s（TRIGGERED 租约口径） -->
+    <sql id="leasePlus60" databaseId="mysql">NOW(3) + INTERVAL 60 SECOND</sql>
+    <sql id="leasePlus60" databaseId="sqlite">strftime('%Y-%m-%d %H:%M:%f','now','localtime','+60 seconds')</sql>
+
+    <!-- 可绑定参数的租约延长：+#{leaseSeconds} 秒 -->
+    <sql id="leasePlusSecondsParam" databaseId="mysql">NOW(3) + INTERVAL #{leaseSeconds} SECOND</sql>
+    <sql id="leasePlusSecondsParam" databaseId="sqlite">strftime('%Y-%m-%d %H:%M:%f','now','localtime', '+' || #{leaseSeconds} || ' seconds')</sql>
+
+    <!-- 秒级回退量：NOW(3) - #{seconds} 秒 -->
+    <sql id="now3MinusSecondsParam" databaseId="mysql">NOW(3) - INTERVAL #{seconds} SECOND</sql>
+    <sql id="now3MinusSecondsParam" databaseId="sqlite">strftime('%Y-%m-%d %H:%M:%f','now','localtime', '-' || #{seconds} || ' seconds')</sql>
+
+    <!-- 天级回退（秒精度 NOW()）：日志/指标保留期 -->
+    <sql id="nowMinusDaysParam" databaseId="mysql">NOW() - INTERVAL #{retainDays} DAY</sql>
+    <sql id="nowMinusDaysParam" databaseId="sqlite">datetime('now','localtime', '-' || #{retainDays} || ' days')</sql>
+
+    <!-- 分钟级回退（毫秒精度 NOW(3)）：指标窗口 -->
+    <sql id="now3MinusMinutesParam" databaseId="mysql">NOW(3) - INTERVAL #{sinceMinutes} MINUTE</sql>
+    <sql id="now3MinusMinutesParam" databaseId="sqlite">strftime('%Y-%m-%d %H:%M:%f','now','localtime', '-' || #{sinceMinutes} || ' minutes')</sql>
+
+    <!-- 固定 60 秒回退 -->
+    <sql id="now3Minus60Seconds" databaseId="mysql">NOW(3) - INTERVAL 60 SECOND</sql>
+    <sql id="now3Minus60Seconds" databaseId="sqlite">strftime('%Y-%m-%d %H:%M:%f','now','localtime','-60 seconds')</sql>
+
+    <!-- 固定 1 小时回退 -->
+    <sql id="now3Minus1Hour" databaseId="mysql">NOW(3) - INTERVAL 1 HOUR</sql>
+    <sql id="now3Minus1Hour" databaseId="sqlite">strftime('%Y-%m-%d %H:%M:%f','now','localtime','-1 hour')</sql>
+
+    <!-- 小时级回退（秒精度 NOW()，参数小时数）：流程超时扫描 -->
+    <sql id="nowMinusHoursParam" databaseId="mysql">DATE_SUB(NOW(), INTERVAL #{timeoutHours} HOUR)</sql>
+    <sql id="nowMinusHoursParam" databaseId="sqlite">datetime('now','localtime', '-' || #{timeoutHours} || ' hours')</sql>
+
+    <!-- 僵尸任务判定下限：NOW(3) - (timeout_seconds * 2) 秒（引用任务表列 timeout_seconds） -->
+    <sql id="zombieCutoff" databaseId="mysql">NOW(3) - INTERVAL (timeout_seconds * 2) SECOND</sql>
+    <sql id="zombieCutoff" databaseId="sqlite">strftime('%Y-%m-%d %H:%M:%f','now','localtime', '-' || (timeout_seconds * 2) || ' seconds')</sql>
+
+    <!-- 实例 variable 里的业务标题提取：MySQL JSON_UNQUOTE 对非法 JSON 原样返回，
+         SQLite json_extract 会抛错，因此 sqlite 变体必须 json_valid 守卫 -->
+    <sql id="instanceBizTitle" databaseId="mysql">JSON_UNQUOTE(JSON_EXTRACT(i.variable, '$.title'))</sql>
+    <sql id="instanceBizTitle" databaseId="sqlite">CASE WHEN i.variable IS NULL OR NOT json_valid(i.variable) THEN NULL ELSE json_extract(i.variable, '$.title') END</sql>
+
+    <!-- 在途变更 JSON 写入：MySQL 列为 JSON 类型需 CAST，SQLite 列为 TEXT 直接绑定 -->
+    <sql id="pendingChangeValue" databaseId="mysql">CAST(#{pendingChange} AS JSON)</sql>
+    <sql id="pendingChangeValue" databaseId="sqlite">#{pendingChange}</sql>
+
+    <!-- 配额回退一步：MySQL 用 GREATEST，SQLite 用标量 max（两参形式） -->
+    <sql id="quotaDec" databaseId="mysql">GREATEST(submit_count - 1, 0)</sql>
+    <sql id="quotaDec" databaseId="sqlite">max(submit_count - 1, 0)</sql>
+
+</mapper>

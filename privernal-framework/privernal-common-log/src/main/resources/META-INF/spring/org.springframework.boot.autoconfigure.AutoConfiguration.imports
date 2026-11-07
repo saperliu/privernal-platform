@@ -1,0 +1,2 @@
+com.privernal.common.log.service.AsyncLogService
+com.privernal.common.log.aspect.LogAspect

@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.dynamic.dbs.mapper.DynamicFormLogMapper">
+
+    <resultMap type="com.privernal.dynamic.dto.DynamicFormLogDTO" id="DynamicFormLogResult">
+
+        <result property="id" column="id"/>
+
+        <result property="tenantId" column="tenant_id"/>
+
+        <result property="revision" column="revision"/>
+
+        <result property="createdBy" column="created_by"/>
+
+        <result property="createdTime" column="created_time"/>
+
+        <result property="updatedBy" column="updated_by"/>
+
+        <result property="updatedTime" column="updated_time"/>
+
+        <result property="deletedFlag" column="deleted_flag"/>
+
+        <result property="deletedBy" column="deleted_by"/>
+
+        <result property="deletedTime" column="deleted_time"/>
+
+        <result property="departmentId" column="department_id"/>
+
+        <result property="organizationId" column="organization_id"/>
+
+        <result property="remark" column="remark"/>
+
+        <result property="title" column="title"/>
+
+        <result property="status" column="status"/>
+
+        <result property="formId" column="form_id"/>
+
+        <result property="version" column="version"/>
+
+        <result property="metaData" column="meta_data"
+                typeHandler="com.privernal.common.mybatis.type.JSONObjectTypeHandler"/>
+
+        <result property="isWorkflow" column="is_workflow"/>
+
+        <result property="workflowCode" column="workflow_code"/>
+
+        <result property="logType" column="log_type"/>
+
+        <result property="formName" column="form_name"/>
+
+        <result property="formCode" column="form_code"/>
+    </resultMap>
+
+    <sql id="selectDynamicFormLogVo">
+        select formLog.id,
+               formLog.tenant_id,
+               formLog.revision,
+               formLog.created_by,
+               formLog.created_time,
+               formLog.updated_by,
+               formLog.updated_time,
+               formLog.deleted_flag,
+               formLog.deleted_by,
+               formLog.deleted_time,
+               formLog.department_id,
+               formLog.organization_id,
+               formLog.remark,
+               formLog.title,
+               formLog.status,
+               formLog.form_id,
+               formLog.version,
+               formLog.meta_data,
+               formLog.is_workflow,
+               formLog.workflow_code,
+               formLog.log_type,
+               formInfo.table_name as form_name,
+               formInfo.table_code as form_code
+        from dynamic_form_log as formLog
+        left join dynamic_form as formInfo
+            on formInfo.id = formLog.form_id and formInfo.deleted_flag = 'N'
+    </sql>
+
+    <select id="selectDynamicFormLogList" parameterType="com.privernal.dynamic.filter.DynamicFormLogFilterDTO"
+            resultMap="DynamicFormLogResult">
+        <include refid="selectDynamicFormLogVo"/>
+        <where>
+            formLog.deleted_flag = 'N'
+            <if test="departmentId != null  and departmentId != ''">and formLog.department_id = #{departmentId}</if>
+            <if test="organizationId != null  and organizationId != ''">and formLog.organization_id =
+                #{organizationId}
+            </if>
+            <if test="remark != null  and remark != ''">and formLog.remark = #{remark}</if>
+            <if test="title != null  and title != ''">and formLog.title = #{title}</if>
+            <if test="status != null ">and formLog.status = #{status}</if>
+            <if test="formId != null  and formId != ''">and formLog.form_id = #{formId}</if>
+            <if test="version != null  and version != ''">and formLog.version = #{version}</if>
+            <if test="metaData != null ">and formLog.meta_data = #{metaData}</if>
+            <if test="isWorkflow != null ">and formLog.is_workflow = #{isWorkflow}</if>
+            <if test="workflowCode != null  and workflowCode != ''">and formLog.workflow_code = #{workflowCode}</if>
+            <if test="logType != null  and logType != ''">and formLog.log_type = #{logType}</if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    formLog.remark like concat('%', #{item}, '%')
+                    or formLog.title like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by formLog.created_time desc
+    </select>
+
+
+</mapper>

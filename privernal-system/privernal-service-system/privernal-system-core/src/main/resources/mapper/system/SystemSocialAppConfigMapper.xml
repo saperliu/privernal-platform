@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemSocialAppConfigMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemSocialAppConfig" id="SystemSocialAppConfigResult">
+        <result property="id"    column="id"    />
+        <result property="appId"    column="app_id"    />
+        <result property="secret"    column="secret"    />
+        <result property="appCode"    column="app_code"    />
+        <result property="appName"    column="app_name"    />
+        <result property="appUrl"    column="app_url"    />
+        <result property="roleId"    column="role_id"    />
+        <result property="examineUser"    column="examine_user"    />
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="remark"    column="remark"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="departmentId"    column="department_id"    />
+        <result property="synEmployee"    column="syn_employee"    />
+        <result property="source"    column="source"    />
+        <result property="agentId"    column="agent_id"    />
+        <result property="scheme"    column="scheme"    />
+        <result property="corpId"    column="corp_id"    />
+    </resultMap>
+
+    <sql id="selectSystemSocialAppConfigVo">
+        select id, app_id, secret, app_code, app_name, app_url, role_id, examine_user, tenant_id, revision, created_by, created_time, updated_by,
+               updated_time, deleted_flag, deleted_by, deleted_time, remark, syn_employee, agent_id, scheme, corp_id, source,
+               organization_id, department_id from system_social_app_config as appConfig
+    </sql>
+
+    <select id="selectSystemSocialAppConfigList" parameterType="com.privernal.system.filter.SystemSocialAppConfigFilterDTO" resultMap="SystemSocialAppConfigResult">
+        <include refid="selectSystemSocialAppConfigVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="id != null  and id != ''"> and id = #{id}</if>
+            <if test="appId != null  and appId != ''"> and app_id = #{appId}</if>
+            <if test="secret != null  and secret != ''"> and secret = #{secret}</if>
+            <if test="source != null  and source != ''"> and source = #{source}</if>
+            <if test="corpId != null  and corpId != ''"> and corp_id = #{corpId}</if>
+            <if test="agentId != null  and agentId != ''"> and agent_id = #{agentId}</if>
+            <if test="appCode != null  and appCode != ''"> and app_code = #{appCode}</if>
+            <if test="appName != null  and appName != ''"> and app_name like concat('%', #{appName}, '%')</if>
+            <if test="appUrl != null  and appUrl != ''"> and app_url = #{appUrl}</if>
+            <if test="roleId != null  and roleId != ''"> and role_id = #{roleId}</if>
+            <if test="examineUser != null  and examineUser != ''"> and examine_user = #{examineUser}</if>
+            <if test="remark != null  and remark != ''"> and remark = #{remark}</if>
+            <if test="organizationId != null  and organizationId != ''"> and organization_id = #{organizationId}</if>
+            <if test="departmentId != null  and departmentId != ''"> and department_id = #{departmentId}</if>
+
+        </where>
+    </select>
+
+
+</mapper>

@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.privernal.dynamic.dba.mapper.DynamicTableDataMapper">
+    <!-- 保存 -->
+    <insert id="insert" parameterType="java.util.Map" keyProperty="id">
+            insert into `${tableName}`(
+                <foreach collection="tableMap.keySet()" item="column" separator=",">
+                    ${column}
+                </foreach>
+            )
+            values(
+                <foreach collection="tableMap.keySet()" item="column" separator=",">
+                    #{tableMap[${column}]}
+                </foreach>
+            )
+
+    </insert>
+
+    <!-- 更新 -->
+    <update id="update" parameterType="java.util.Map" keyProperty="id">
+
+            update `${tableName}`
+
+            set
+            <foreach collection="tableMap" index="field" item="fieldvalue" separator=",">
+                <if test="fieldvalue != null">
+                    <if test="field != 'keyFieldMap' and field!='id' and field!='created_by' and field!='tenant_id' and field!='revision' and field!='created_time' and field!='department_id' and field!='organization_id'">
+                        `${field}` = #{fieldvalue}
+                    </if>
+                </if>
+            </foreach>
+
+            where 1=1 and id =#{tableMap[id]}
+            <foreach collection="tableMap" index="keyfield" item="keyvalues">
+                <if test="keyfield == 'keyFieldMap'">
+                    <foreach collection="keyvalues" index="field" item="fieldvalue">
+                        and `${field}` = #{fieldvalue}
+                    </foreach>
+                </if>
+            </foreach>
+
+    </update>
+
+    <!-- 更新，可以更新null -->
+    <update id="updateWithNull" parameterType="java.util.Map" keyProperty="id">
+
+        <foreach collection="tableMap" index="key" item="value">
+            update `${key}`
+
+            set
+            <foreach collection="value" index="field" item="fieldvalue" separator=",">
+                <if test="field != 'keyFieldMap'">
+                    `${field}` = #{fieldvalue}
+                </if>
+            </foreach>
+
+            where 1=1
+            <foreach collection="value" index="keyfield" item="keyvalues">
+                <if test="keyfield == 'keyFieldMap'">
+                    <foreach collection="keyvalues" index="field" item="fieldvalue">
+                        and `${field}` = #{fieldvalue}
+                    </foreach>
+                </if>
+            </foreach>
+        </foreach>
+    </update>
+
+    <!-- 删除 -->
+    <delete id="delete" parameterType="java.util.Map">
+
+        <foreach collection="tableMap" index="key" item="value">
+            delete from `${key}`
+            where 1=1
+            <foreach collection="value" index="field" item="fieldvalue">
+                <if test="fieldvalue != null">
+                    and `${field}` = #{fieldvalue}
+                </if>
+            </foreach>
+
+        </foreach>
+
+    </delete>
+
+    <!-- 删除根据id（软删 T15：物理表自带 deleted_flag/deleted_by/deleted_time 基线列，
+         查询链路统一过滤 deleted_flag='N'，业务唯一索引为 (col, deleted_time) 复合） -->
+    <update id="deleteById">
+        update `${tableName}`
+        set deleted_flag = 'Y', deleted_time = <include refid="privernal.dialect.now3"/>, deleted_by = #{deletedBy}
+        where id = #{id} and deleted_flag = 'N'
+    </update>
+
+    <!-- 删除根据id集合 -->
+    <update id="deleteByIds">
+        update `${tableName}`
+        set deleted_flag = 'Y', deleted_time = <include refid="privernal.dialect.now3"/>, deleted_by = #{deletedBy}
+        where deleted_flag = 'N' and id in
+        <foreach collection="list" index="index" item="item" separator="," open="(" close=")">
+            #{item}
+        </foreach>
+    </update>
+
+    <!-- 根据id查询所有数据 -->
+    <select id="selectById" resultType="java.util.HashMap">
+        select *
+        from `${tableName}`
+        where id = #{id} and deleted_flag = 'N'
+    </select>
+
+    <!-- 查询 -->
+    <select id="selectList" parameterType="java.util.Map" resultType="java.util.HashMap">
+
+        <foreach collection="tableMap" index="key" item="value">
+            <if test="key != 'pageNum' and key != 'pageSize' and key != 'orderBys' and key != 'condParams'">
+                select * from `${key}`
+                where 1=1 and deleted_flag = 'N'
+                <foreach collection="value" index="field" item="fieldValue">
+                    <if test="fieldValue != null and fieldValue!='' and field!='pageNum' and field!='pageSize' ">
+                        AND ${fieldValue}
+                    </if>
+                </foreach>
+            </if>
+        </foreach>
+
+        <if test="tableMap.orderBys != null">
+            order by
+            <!-- field 为服务端已校验的排序表达式（列名带反引号或子表极值子查询），不可再包引号 -->
+            <foreach collection="tableMap.orderBys" index="field" item="sort" separator=",">
+                ${field} ${sort}
+            </foreach>
+        </if>
+
+        <if test="tableMap.pageNum != null and tableMap.pageSize != null">
+            limit #{tableMap.pageNum},#{tableMap.pageSize}
+        </if>
+    </select>
+
+    <!-- 查询总记录数 -->
+    <select id="countData" parameterType="java.util.Map" resultType="int">
+
+        <foreach collection="tableMap" index="key" item="value">
+            <if test="key != 'pageNum' and key != 'pageSize' and key != 'orderBys' and key != 'condParams'">
+                select count(1) from `${key}`
+                where 1=1 and deleted_flag = 'N'
+                <foreach collection="value" index="field" item="fieldValue">
+
+                    <if test="fieldValue != null and fieldValue!='' and field!='pageNum' and field!='pageSize' ">
+                        AND ${fieldValue}
+                    </if>
+                </foreach>
+            </if>
+        </foreach>
+    </select>
+
+    <!-- 动态sql查询-->
+    <select id="querySql" parameterType="string" resultType="java.util.HashMap">
+        ${value}
+    </select>
+
+    <!-- 按父数据 ID 删除子表行（表名已白名单校验，值参数绑定） -->
+    <delete id="deleteByParentIds">
+        delete from `${tableName}` where parent_id in
+        <foreach collection="list" item="pid" open="(" separator="," close=")">
+            #{pid}
+        </foreach>
+    </delete>
+
+    <!-- 按父数据 ID 查询子表行（编辑回显） -->
+    <select id="selectByParentId" resultType="java.util.HashMap">
+        select * from `${tableName}` where parent_id = #{parentId} order by created_time asc
+    </select>
+
+    <!-- 「不允许重复」保存校验：列名经白名单校验后拼接，值参数绑定；排除自身 id -->
+    <select id="countByColumnValue" resultType="int">
+        select count(1) from `${tableName}`
+        where `${column}` = #{value} and deleted_flag = 'N'
+        <if test="excludeId != null and excludeId != ''">
+            and id != #{excludeId}
+        </if>
+    </select>
+
+</mapper>

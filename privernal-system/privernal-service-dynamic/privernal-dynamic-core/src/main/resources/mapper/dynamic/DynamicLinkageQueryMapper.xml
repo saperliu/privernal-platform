@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.dynamic.advanced.mapper.DynamicLinkageQueryMapper">
+
+    <!-- SQL 骨架由 SafeConditionSql 构建：标识符经白名单校验后拼接，值以 #{params.pN} 绑定在
+         querySql 文本内（§7.3/§7.4），此处原样执行构建好的语句 -->
+    <select id="selectRows" resultType="java.util.HashMap">
+        ${querySql}
+    </select>
+</mapper>

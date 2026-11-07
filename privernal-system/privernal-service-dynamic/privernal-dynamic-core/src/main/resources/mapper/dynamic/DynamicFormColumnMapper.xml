@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.dynamic.dbs.mapper.DynamicFormColumnMapper">
+
+    <resultMap type="com.privernal.dynamic.dto.DynamicFormColumnDTO" id="DynamicFormColumnResult">
+
+        <result property="id" column="id"/>
+
+        <result property="tenantId" column="tenant_id"/>
+
+        <result property="revision" column="revision"/>
+
+        <result property="createdBy" column="created_by"/>
+
+        <result property="createdTime" column="created_time"/>
+
+        <result property="updatedBy" column="updated_by"/>
+
+        <result property="updatedTime" column="updated_time"/>
+
+        <result property="deletedFlag" column="deleted_flag"/>
+
+        <result property="deletedBy" column="deleted_by"/>
+
+        <result property="deletedTime" column="deleted_time"/>
+
+        <result property="departmentId" column="department_id"/>
+
+        <result property="organizationId" column="organization_id"/>
+
+        <result property="remark" column="remark"/>
+
+        <result property="title" column="title"/>
+
+        <result property="status" column="status"/>
+
+        <result property="formId" column="form_id"/>
+
+        <result property="filedCode" column="filed_code"/>
+
+        <result property="filedName" column="filed_name"/>
+
+        <result property="filedType" column="filed_type"/>
+
+        <result property="length" column="length"/>
+
+        <result property="scale" column="scale"/>
+
+        <result property="sort" column="sort"/>
+
+        <result property="defaultValue" column="default_value"/>
+        <result property="queryDefaultValue" column="query_default_value"/>
+        <result property="orderDir" column="order_dir"/>
+        <result property="componentId" column="component_id"/>
+
+        <result property="showList" column="show_list"/>
+
+        <result property="showQuery" column="show_query"/>
+
+        <result property="sensitive" column="sensitive_flag"/>
+
+        <result property="uniqueFlag" column="unique_flag"/>
+    </resultMap>
+
+    <sql id="selectDynamicFormColumnVo">
+        select formColumn.id,
+               formColumn.tenant_id,
+               formColumn.revision,
+               formColumn.created_by,
+               formColumn.created_time,
+               formColumn.updated_by,
+               formColumn.updated_time,
+               formColumn.deleted_flag,
+               formColumn.deleted_by,
+               formColumn.deleted_time,
+               formColumn.department_id,
+               formColumn.organization_id,
+               formColumn.remark,
+               formColumn.title,
+               formColumn.status,
+               formColumn.form_id,
+               formColumn.filed_code,
+               formColumn.filed_name,
+               formColumn.filed_type,
+               formColumn.length,
+               formColumn.scale,
+               formColumn.sort,
+               formColumn.default_value,
+               formColumn.query_default_value,
+               formColumn.order_dir,
+               formColumn.show_list,
+               formColumn.component_id,
+               formColumn.show_query,
+               formColumn.sensitive_flag,
+               formColumn.unique_flag
+        from dynamic_form_column as formColumn
+    </sql>
+
+    <select id="selectDynamicFormColumnList" parameterType="com.privernal.dynamic.filter.DynamicFormColumnFilterDTO"
+            resultMap="DynamicFormColumnResult">
+        <include refid="selectDynamicFormColumnVo"/>
+        <where>
+            formColumn.deleted_flag = 'N'
+            <if test="departmentId != null  and departmentId != ''">and formColumn.department_id = #{departmentId}</if>
+            <if test="organizationId != null  and organizationId != ''">and formColumn.organization_id =
+                #{organizationId}
+            </if>
+            <if test="remark != null  and remark != ''">and formColumn.remark = #{remark}</if>
+            <if test="title != null  and title != ''">and formColumn.title = #{title}</if>
+            <if test="status != null ">and formColumn.status = #{status}</if>
+            <if test="formId != null  and formId != ''">and formColumn.form_id = #{formId}</if>
+            <if test="filedCode != null  and filedCode != ''">and formColumn.filed_code = #{filedCode}</if>
+            <if test="componentId != null  and componentId != ''">and formColumn.component_id = #{componentId}</if>
+            <if test="filedName != null  and filedName != ''">and formColumn.filed_name like concat('%', #{filedName},
+                '%')
+            </if>
+            <if test="filedType != null  and filedType != ''">and formColumn.filed_type = #{filedType}</if>
+            <if test="length != null ">and formColumn.length = #{length}</if>
+            <if test="scale != null ">and formColumn.scale = #{scale}</if>
+            <if test="sort != null ">and formColumn.sort = #{sort}</if>
+            <if test="defaultValue != null  and defaultValue != ''">and formColumn.default_value = #{defaultValue}</if>
+            <if test="showList != null ">and formColumn.show_list = #{showList}</if>
+            <if test="showQuery != null ">and formColumn.show_query = #{showQuery}</if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    formColumn.remark like concat('%', #{item}, '%')
+                    or formColumn.title like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by formColumn.sort asc
+    </select>
+
+    <delete id="deleteDynamicFormColumnByFormId">
+        delete from dynamic_form_column as formColumn where formColumn.form_id = #{formId}
+        <if test="fieldName != null  and fieldName != ''">and formColumn.filed_code = #{fieldName}</if>
+    </delete>
+
+    <select id="selectDynamicFormColumnByTableCode" resultMap="DynamicFormColumnResult">
+        <include refid="selectDynamicFormColumnVo"/>
+        left join dynamic_form as form on form.id = formColumn.form_id
+        <where>
+            formColumn.deleted_flag = 'N' and form.table_code = #{tableCode}
+        </where>
+        order by formColumn.sort asc
+    </select>
+
+</mapper>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.dynamic.dbs.mapper.DynamicFormRelationMapper">
+
+    <!-- deleted_time 走 privernal.dialect.nowS 片段（MySQL: NOW()，SQLite: datetime('now','localtime')）。
+         @InterceptorIgnore(tenantLine) 标注在接口方法上（见 mapper 接口），MP 拦截器从接口方法读取。 -->
+
+    <!-- 按引用方表单清理登记（逻辑删除）：form_id 全局唯一、删除范围精确，无需组织过滤 -->
+    <update id="deleteByFormId">
+        UPDATE dynamic_form_relation SET deleted_flag = 'Y', deleted_time = <include refid="privernal.dialect.nowS"/>
+        WHERE deleted_flag = 'N' AND form_id = #{formId}
+    </update>
+
+    <!-- 清理「别的表单引用了某张被删表」的登记（逻辑删除），按被关联表编码 -->
+    <update id="deleteByTargetTableCode">
+        UPDATE dynamic_form_relation SET deleted_flag = 'Y', deleted_time = <include refid="privernal.dialect.nowS"/>
+        WHERE deleted_flag = 'N' AND target_table_code = #{targetTableCode}
+    </update>
+
+</mapper>

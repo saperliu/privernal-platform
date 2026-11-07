@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemUserPositionMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemUserPosition" id="SystemUserPositionResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="userId"    column="user_id"    />
+        <result property="positionId"    column="position_id"    />
+<!--        <result property="organizationId"    column="organization_id"    />-->
+<!--        <result property="departmentId"    column="department_id"    />-->
+        <result property="isMain" column="is_main"/>
+    </resultMap>
+
+    <sql id="selectSystemUserPositionVo">
+        select tenant_id, revision, created_by, created_time, updated_by, updated_time, deleted_flag, deleted_by, deleted_time, id, remark, user_id, position_id, is_main from system_user_position as position
+    </sql>
+
+    <select id="selectSystemUserPositionList" parameterType="com.privernal.system.filter.SystemUserPositionFilterDTO" resultMap="SystemUserPositionResult">
+        <include refid="selectSystemUserPositionVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="remark != null  and remark != ''"> and remark = #{remark}</if>
+            <if test="userId != null  and userId != ''"> and user_id = #{userId}</if>
+            <if test="positionId != null  and positionId != ''"> and position_id = #{positionId}</if>
+<!--            <if test="organizationId != null  and organizationId != ''"> and organization_id = #{organizationId}</if>-->
+<!--            <if test="departmentId != null  and departmentId != ''"> and department_id = #{departmentId}</if>-->
+        </where>
+    </select>
+
+
+</mapper>

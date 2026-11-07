@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>com.privernal</groupId>
+        <artifactId>privernal-platform</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <modules>
+        <module>privernal-common-log</module>
+        <module>privernal-common-core</module>
+        <module>privernal-common-redis</module>
+        <!--
+            以下两个模块当前没有任何模块依赖它们，因此不会进入 privernal-server 的运行时 classpath：
+            幂等防重（@RepeatSubmit / IdempotentAspect）、lock4j 分布式锁、Redis 延迟队列、
+            RocketMQ 延迟消息与时间轮均未启用。代码本身会被 Maven 构建并保留，供后续按需启用 ——
+            启用方式是在 privernal-server/pom.xml 补对应 dependency，并确认其自动配置/组件扫描生效。
+        -->
+        <module>privernal-common-redisson</module>
+        <module>privernal-common-rocketmq</module>
+        <module>privernal-common-web</module>
+        <module>privernal-common-security</module>
+        <module>privernal-common-datascope</module>
+		<module>privernal-common-datasource</module>
+		<module>privernal-common-mybatis</module>
+		<module>privernal-common-dingtalk</module>
+		<module>privernal-common-wx</module>
+    </modules>
+
+    <artifactId>privernal-framework</artifactId>
+    <packaging>pom</packaging>
+
+    <description>
+	    平台通用模块
+    </description>
+
+</project>
