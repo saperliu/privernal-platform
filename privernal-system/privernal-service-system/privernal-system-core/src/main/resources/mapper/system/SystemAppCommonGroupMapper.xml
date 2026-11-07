@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemAppCommonGroupMapper">
+
+    <resultMap type="com.privernal.system.dto.SystemAppCommonGroupDTO" id="SystemAppCommonGroupResult">
+
+        <result property="id" column="id"/>
+
+        <result property="appId" column="app_id"/>
+
+        <result property="commonGroupId" column="common_group_id"/>
+
+        <result property="status" column="status"/>
+
+        <result property="remark" column="remark"/>
+
+        <result property="tenantId" column="tenant_id"/>
+
+        <result property="revision" column="revision"/>
+
+        <result property="createdBy" column="created_by"/>
+
+        <result property="createdTime" column="created_time"/>
+
+        <result property="updatedBy" column="updated_by"/>
+
+        <result property="updatedTime" column="updated_time"/>
+
+        <result property="deletedFlag" column="deleted_flag"/>
+
+        <result property="deletedBy" column="deleted_by"/>
+
+        <result property="deletedTime" column="deleted_time"/>
+
+        <result property="organizationId" column="organization_id"/>
+        <result property="commonGroupName" column="commonGroupName"/>
+    </resultMap>
+
+    <sql id="selectSystemAppCommonGroupVo">
+        select appCommonGroup.id,
+               appCommonGroup.app_id,
+               appCommonGroup.common_group_id,
+               appCommonGroup.status,
+               appCommonGroup.remark,
+               appCommonGroup.tenant_id,
+               appCommonGroup.revision,
+               appCommonGroup.created_by,
+               appCommonGroup.created_time,
+               appCommonGroup.updated_by,
+               appCommonGroup.updated_time,
+               appCommonGroup.deleted_flag,
+               appCommonGroup.deleted_by,
+               appCommonGroup.deleted_time,
+               commonGroup.name as commonGroupName,
+               appCommonGroup.organization_id
+        from system_app_common_group as appCommonGroup
+    </sql>
+
+    <select id="selectSystemAppCommonGroupList" parameterType="com.privernal.system.filter.SystemAppCommonGroupFilterDTO"
+            resultMap="SystemAppCommonGroupResult">
+        <include refid="selectSystemAppCommonGroupVo"/>
+        left join system_common_group as commonGroup on appCommonGroup.common_group_id = commonGroup.id
+        <where>
+            appCommonGroup.deleted_flag = 'N'
+            <if test="appId != null  and appId != ''">and appCommonGroup.app_id = #{appId}</if>
+            <if test="commonGroupId != null  and commonGroupId != ''">and appCommonGroup.common_group_id =
+                #{commonGroupId}
+            </if>
+            <if test="status != null ">and appCommonGroup.status = #{status}</if>
+            <if test="remark != null  and remark != ''">and appCommonGroup.remark like concat('%', #{remark}, '%')</if>
+            <if test="organizationId != null  and organizationId != ''">and appCommonGroup.organization_id =
+                #{organizationId}
+            </if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    appCommonGroup.remark like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by appCommonGroup.created_time desc
+    </select>
+
+
+</mapper>

@@ -1,0 +1,411 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemUserMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemUser" id="SystemUserResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="loginName"    column="login_name"    />
+        <result property="nickName"    column="nick_name"    />
+        <result property="userType"    column="user_type"    />
+        <result property="email"    column="email"    />
+        <result property="phone"    column="phone"    />
+        <result property="password"    column="password"    />
+        <result property="passwordV2"    column="password_v2"    />
+        <result property="gender"    column="gender"    />
+        <result property="avatar"    column="avatar"    />
+        <result property="status"    column="status"    />
+        <result property="identityNum"    column="identity_num"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="departmentId"    column="department_id"    />
+        <result property="dataScope" column="data_scope"/>
+    </resultMap>
+
+    <sql id="selectSystemUserVo">
+        select user1.tenant_id,
+               user1.revision,
+               user1.created_by,
+               user1.created_time,
+               user1.updated_by,
+               user1.updated_time,
+               user1.deleted_flag,
+               user1.deleted_by,
+               user1.deleted_time,
+               user1.id,
+               user1.remark,
+               user1.login_name,
+               user1.nick_name,
+               user1.user_type,
+               user1.email,
+               user1.phone,
+               user1.password,
+               user1.gender,
+               user1.avatar,
+               user1.status,
+               user1.identity_num,
+               user1.organization_id,
+               user1.department_id,
+               org.data_scope
+        from system_user_base as user1
+        left join system_user_service_org org
+        on org.organization_id = user1.organization_id and org.user_id = user1.id  and org.deleted_flag = 'N'
+    </sql>
+
+    <select id="selectSystemUserList" parameterType="com.privernal.system.filter.SystemUserFilterDTO" resultMap="SystemUserResult">
+        <include refid="selectSystemUserVo"/>
+        <where>
+            user1.deleted_flag = 'N'
+            <if test="userId != null  and userId != ''">and user1.id != #{userId}</if>
+            <if test="remark != null  and remark != ''">and user1.remark like concat('%', #{remark}, '%')</if>
+            <if test="loginName != null  and loginName != ''">and user1.login_name = #{loginName}</if>
+            <if test="nickName != null  and nickName != ''">and user1.nick_name like concat('%', #{nickName}, '%')</if>
+            <if test="userType != null  and userType != ''">and user1.user_type = #{userType}</if>
+            <if test="email != null  and email != ''">and user1.email = #{email}</if>
+            <if test="phone != null  and phone != ''">and user1.phone = #{phone}</if>
+            <if test="password != null  and password != ''">and user1.password = #{password}</if>
+            <if test="gender != null  and gender != ''">and user1.gender = #{gender}</if>
+            <if test="avatar != null  and avatar != ''">and user1.avatar = #{avatar}</if>
+            <if test="status != null ">and user1.status = #{status}</if>
+            <if test="identityNum != null  and identityNum != ''">and user1.identity_num = #{identityNum}</if>
+            <if test="organizationId != null  and organizationId != ''">and user1.organization_id = #{organizationId}
+            </if>
+            <if test="deptIds!=null and deptIds.length>0">
+                and
+                <foreach collection="deptIds" item="item" open="(" separator="or" close=")">
+                    user1.department_id = #{item}
+                </foreach>
+            </if>
+
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    user1.nick_name like concat('%', #{item}, '%')
+                    or user1.remark like concat('%', #{item}, '%')
+                    or user1.login_name like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by user1.created_time desc
+    </select>
+
+
+    <select id="checkLoginNameUnique" parameterType="String" resultType="int">
+        <if test="_databaseId == 'mysql'">
+            select count(1) from system_user_base as user1 where login_name = #{loginName} limit 1
+        </if>
+        <if test="_databaseId == 'sqlserver'">
+            select top 1 count(1) from system_user_base as user1 where login_name = #{loginName}
+        </if>
+
+    </select>
+
+    <select id="checkPhoneUnique" parameterType="String" resultMap="SystemUserResult">
+        <choose>
+            <when test="_databaseId == 'mysql'">
+                select id, phone from system_user_base as user1 where phone = #{phoneNumber} and  deleted_flag = 'N' limit 1
+            </when>
+            <when test="_databaseId =='sqlserver'">
+                select  top 1 id, phone from system_user_base as user1 where phone = #{phoneNumber} and  deleted_flag = 'N'
+            </when>
+        </choose>
+
+    </select>
+
+    <select id="checkEmailUnique" parameterType="String" resultMap="SystemUserResult">
+        <if test="_databaseId == 'mysql'">
+            select id, email from system_user_base as user1 where email = #{email} and  deleted_flag = 'N'  limit 1
+        </if>
+        <if test="_databaseId == 'sqlserver'">
+            select  top 1 id, email from system_user_base as user1 where email = #{email} and  deleted_flag = 'N'
+        </if>
+
+    </select>
+
+    <update id="updateUserAvatar" >
+        update system_user_base set avatar = #{avatar} where login_name = #{loginName} and deleted_flag = 'N'
+    </update>
+
+    <update id="updateUserPwd" >
+      update system_user_base set password = #{password} where login_name = #{loginName} and deleted_flag = 'N'
+    </update>
+
+
+    <resultMap type="com.privernal.system.dto.SystemUserDTO" id="SystemUserResultDTO">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="loginName"    column="login_name"    />
+        <result property="nickName"    column="nick_name"    />
+        <result property="userType"    column="user_type"    />
+        <result property="email"    column="email"    />
+        <result property="phone"    column="phone"    />
+        <result property="password"    column="password"    />
+        <result property="passwordV2"    column="password_v2"    />
+        <result property="gender"    column="gender"    />
+        <result property="avatar"    column="avatar"    />
+        <result property="status"    column="status"    />
+        <result property="identityNum"    column="identity_num"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="organizationName"    column="organization_name"    />
+        <result property="departmentId"    column="department_id"    />
+    </resultMap>
+
+    <select id="selectUserByLoginName" parameterType="String" resultMap="SystemUserResultDTO">
+        select user1.created_by, user1.created_time, user1.updated_by, user1.updated_time, user1.id, user1.remark, user1.login_name,
+               user1.nick_name, user1.user_type, user1.email, user1.phone, user1.password, user1.password_v2, user1.gender, user1.avatar, user1.status, user1.identity_num, user1.organization_id, user1.department_id, org.organization_name
+        from system_user_base as user1
+        left join system_organization org on org.id = user1.organization_id
+        where user1.login_name = #{loginName} and user1.deleted_flag = 'N' and org.deleted_flag = 'N'  and org.status = 1
+    </select>
+
+    <select id="selectUserByPhone" parameterType="String" resultMap="SystemUserResultDTO">
+        select user1.created_by, user1.created_time, user1.updated_by, user1.updated_time, user1.id, user1.remark, user1.login_name,
+               user1.nick_name, user1.user_type, user1.email, user1.phone, user1.password, user1.password_v2, user1.gender, user1.avatar, user1.status, user1.identity_num, user1.organization_id, user1.department_id, org.organization_name
+        from system_user_base as user1
+        left join system_organization org on org.id = user1.organization_id
+        where user1.phone = #{phone} and user1.deleted_flag = 'N' and org.deleted_flag = 'N' and org.status = 1
+    </select>
+
+    <select id="selectSystemUserById" parameterType="String" resultMap="SystemUserResult">
+        <include refid="selectSystemUserVo"/>
+        <where>
+            user1.id = #{userId} and user1.deleted_flag = 'N'
+        </where>
+    </select>
+
+    <select id="selectUserDTOByOrgIdAndId" parameterType="String" resultMap="SystemUserResultDTO">
+        select user1.created_by, user1.created_time, user1.updated_by, user1.updated_time, user1.id, user1.remark, user1.login_name,
+               user1.nick_name, user1.user_type, user1.email, user1.phone, user1.password, user1.gender, user1.avatar, user1.status, user1.identity_num, serorg.organization_id, serorg.department_id, org.organization_name
+        from system_user_base as user1
+        left join system_user_service_org serorg on serorg.user_id = user1.id
+            left join system_organization org on org.id = serorg.organization_id
+        where user1.id = #{userId} and user1.deleted_flag = 'N' and serorg.organization_id = #{orgId} and serorg.deleted_flag = 'N' and org.deleted_flag = 'N'
+    </select>
+
+    <select id="selectUserDTOByOrgIdAndIdList" parameterType="java.util.List" resultMap="SystemUserResultDTO">
+        select  user1.id, user1.remark, user1.login_name, user1.nick_name, user1.user_type, user1.email, user1.phone, user1.gender, user1.avatar, user1.status, user1.identity_num, user1.organization_id, user1.department_id
+        from system_user_base as user1
+        <where>
+            id in
+            <foreach collection="userList" item="userId" open="(" separator="," close=")">
+                #{userId}
+            </foreach>
+
+        </where>
+    </select>
+
+    <select id="selectUserDTOByDeptIdList" parameterType="java.util.List" resultMap="SystemUserResultDTO">
+        select distinct user1.id, user1.remark, user1.login_name, user1.nick_name, user1.user_type, user1.email, user1.phone, user1.gender, user1.avatar, user1.status, user1.identity_num, user1.organization_id, user1.department_id
+        from system_user_base as user1
+        <where>
+            user1.deleted_flag = 'N' and user1.status = 1
+            and user1.department_id in
+            <foreach collection="deptList" item="deptId" open="(" separator="," close=")">
+                #{deptId}
+            </foreach>
+
+        </where>
+    </select>
+
+    <select id="selectUserDTOByRoleIdList"  resultMap="SystemUserResultDTO">
+        select distinct user1.id, user1.remark, user1.login_name, user1.nick_name, user1.user_type, user1.email, user1.phone, user1.gender, user1.avatar, user1.status, user1.identity_num, user1.organization_id, user1.department_id
+        from system_user_base as user1
+        left join  system_role_user as roleUser on roleUser.user_id = user1.id
+        left join system_role as role on role.id = roleUser.role_id and role.status = 1 and role.deleted_flag = 'N'
+        left join  system_role_user_dept as roleUserDept on roleUserDept.role_user_id = roleUser.id
+        <where>
+            user1.deleted_flag = 'N' and user1.status = 1 and roleUser.deleted_flag = 'N'  and ( roleUserDept.deleted_flag = 'N' or  roleUserDept.deleted_flag is null)
+            <if test="departmentId != null  and departmentId != ''">
+            and (user1.department_id = #{departmentId} or roleUserDept.department_id = #{departmentId})
+            </if>
+            and roleUser.role_id in
+            <foreach collection="roleList" item="roleId" open="(" separator="," close=")">
+                #{roleId}
+            </foreach>
+
+        </where>
+    </select>
+
+    <select id="selectUserDTOByGroupIdList"  resultMap="SystemUserResultDTO">
+        select  distinct user1.id, user1.remark, user1.login_name, user1.nick_name, user1.user_type, user1.email, user1.phone, user1.gender, user1.avatar, user1.status, user1.identity_num, user1.organization_id, user1.department_id
+        from system_user_base as user1
+        left join  system_user_group_user as userGroupUser on userGroupUser.user_id = user1.id
+        left join system_user_group as userGroup on userGroupUser.group_id = userGroup.id and userGroup.status = 1
+        <where>
+            user1.deleted_flag = 'N'  and user1.status = 1 and userGroupUser.deleted_flag = 'N' and userGroup.deleted_flag = 'N'
+            <if test="departmentId != null  and departmentId != ''">
+                and user1.department_id = #{departmentId}
+            </if>
+            and userGroupUser.group_id in
+            <foreach collection="groupList" item="groupId" open="(" separator="," close=")">
+                #{groupId}
+            </foreach>
+
+        </where>
+    </select>
+
+
+    <select id="selectUserDTOByRoleCodeList" resultMap="SystemUserResultDTO">
+        select distinct user1.id, user1.remark, user1.login_name, user1.nick_name, user1.user_type, user1.email, user1.phone,
+        user1.gender, user1.avatar, user1.status, user1.identity_num, user1.organization_id, user1.department_id
+        from system_user_base as user1
+        left join system_role_user as roleUser on roleUser.user_id = user1.id
+        left join system_role as role on role.id = roleUser.role_id and role.status = 1
+        left join system_role_user_dept as roleUserDept on roleUserDept.role_user_id = roleUser.id
+        <where>
+            user1.deleted_flag = 'N'  and user1.status = 1 and role.deleted_flag = 'N' and roleUser.deleted_flag = 'N' and ( roleUserDept.deleted_flag = 'N' or  roleUserDept.deleted_flag is null)
+            and  role.role_key = #{roleCode}) and  role.organization_id = #{organizationId}
+            and   (role.department_id = #{departmentId} or (user1.department_id = #{departmentId} or roleUserDept.department_id = #{departmentId} ))
+        </where>
+    </select>
+
+    <select id="selectUserDTOByGroupCodeList" resultMap="SystemUserResultDTO">
+        select distinct user1.id, user1.remark, user1.login_name, user1.nick_name, user1.user_type, user1.email, user1.phone,
+        user1.gender, user1.avatar, user1.status, user1.identity_num, user1.organization_id, user1.department_id
+        from system_user_base as user1
+        left join system_user_group_user as userGroupUser on userGroupUser.user_id = user1.id
+        left join system_user_group as userGroup on userGroupUser.group_id = userGroup.id and userGroup.status = 1
+
+        <where>
+            user1.deleted_flag = 'N' and user1.status = 1  and userGroup.deleted_flag = 'N' and userGroupUser.deleted_flag = 'N' and userGroup.department_id = #{departmentId} and userGroup.organization_id = #{organizationId} and userGroup.group_code = #{groupCode}
+        </where>
+    </select>
+
+
+    <select id="selectUserDTOByRoleCodes" resultMap="SystemUserResultDTO">
+        select distinct user1.id, user1.remark, user1.login_name, user1.nick_name, user1.user_type, user1.email, user1.phone,
+        user1.gender, user1.avatar, user1.status, user1.identity_num, user1.organization_id, user1.department_id
+        from system_user_base as user1
+        left join system_role_user as roleUser on roleUser.user_id = user1.id
+        left join system_role as role on role.id = roleUser.role_id and role.status = 1
+        left join system_role_user_dept as roleUserDept on roleUserDept.role_user_id = roleUser.id
+        <where>
+            user1.deleted_flag = 'N' and user1.status = 1  and role.deleted_flag = 'N' and roleUser.deleted_flag = 'N' and ( roleUserDept.deleted_flag = 'N' or  roleUserDept.deleted_flag is null)
+            and  role.organization_id = #{organizationId}
+            and   ( role.department_id = #{departmentId}   or (user1.department_id = #{departmentId} or roleUserDept.department_id = #{departmentId} ) )
+            and role.role_key in
+            <foreach collection="roleCodeList" item="code" open="(" separator="," close=")">
+                #{code}
+            </foreach>
+        </where>
+    </select>
+
+    <select id="selectUserDTOByGroupCodes" resultMap="SystemUserResultDTO">
+        select distinct user1.id, user1.remark, user1.login_name, user1.nick_name, user1.user_type, user1.email, user1.phone,
+        user1.gender, user1.avatar, user1.status, user1.identity_num, user1.organization_id, user1.department_id
+        from system_user_base as user1
+        left join system_user_group_user as userGroupUser on userGroupUser.user_id = user1.id
+        left join system_user_group as userGroup on userGroupUser.group_id = userGroup.id and userGroup.status = 1
+
+        <where>
+            user1.deleted_flag = 'N' and user1.status = 1 and userGroup.deleted_flag = 'N' and userGroupUser.deleted_flag = 'N'
+            and userGroup.organization_id = #{organizationId}
+            and userGroup.department_id = #{departmentId}
+            and userGroup.group_code in
+            <foreach collection="groupCodeList" item="code" open="(" separator="," close=")">
+                #{code}
+            </foreach>
+        </where>
+    </select>
+
+    <select id="selectUserDTOById" parameterType="String" resultMap="SystemUserResultDTO">
+        select user1.created_by, user1.created_time, user1.id, user1.remark, user1.login_name,
+               user1.nick_name, user1.user_type, user1.email, user1.phone, user1.gender, user1.avatar, user1.status, user1.identity_num, serorg.organization_id, serorg.department_id, org.organization_name
+        from system_user_service_org serorg
+        left join system_user_base as user1 on serorg.user_id = user1.id
+        left join system_organization org on org.id = serorg.organization_id
+        where user1.id = #{userId} and user1.deleted_flag = 'N' and serorg.deleted_flag = 'N' and org.deleted_flag = 'N'
+    </select>
+
+
+    <resultMap type="com.privernal.system.dto.SystemUserDTO" id="SystemUserWxDTO">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="loginName"    column="login_name"    />
+        <result property="nickName"    column="nick_name"    />
+        <result property="userType"    column="user_type"    />
+        <result property="email"    column="email"    />
+        <result property="phone"    column="phone"    />
+        <result property="gender"    column="gender"    />
+        <result property="avatar"    column="avatar"    />
+        <result property="status"    column="status"    />
+        <result property="identityNum"    column="identity_num"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="organizationName"    column="organization_name"    />
+        <result property="departmentId"    column="department_id"    />
+        <result property="openId" column="open_id"/>
+        <result property="thirdAccount" column="third_account"/>
+        <result property="thirdUnionId" column="third_union_id"/>
+    </resultMap>
+
+    <select id="selectUserDTOByOpenIdOrPhone" parameterType="String" resultMap="SystemUserWxDTO">
+        select user1.created_by, user1.created_time, user1.id, user1.remark, user1.login_name,
+               user1.nick_name, user1.user_type, user1.email, user1.phone, user1.gender, user1.avatar, user1.status, user1.identity_num,
+               social.uid as third_account,
+               social.open_id as open_id,
+               social.union_id as third_union_id,
+
+               serorg.organization_id, serorg.department_id, org.organization_name
+        from system_user_service_org serorg
+                 left join system_user_base as user1 on serorg.user_id = user1.id
+                 left join system_organization org on org.id = serorg.organization_id
+            left join system_user_social_user socialUser on socialUser.user_id = user1.id and socialUser.deleted_flag = 'N'
+            left join system_social_user social on social.id = socialUser.social_user_id and social.deleted_flag = 'N'
+        <where>
+            user1.deleted_flag = 'N' and serorg.deleted_flag = 'N' and org.deleted_flag = 'N'
+            <if test="openId != null  and openId != ''">
+                and  social.open_id = #{openId}
+            </if>
+            <if test="phone != null  and phone != ''">
+                and  user1.phone = #{phone}
+            </if>
+        </where>
+    </select>
+
+
+    <select id="selectSystemUserByOrganizationId" parameterType="String" resultMap="SystemUserResultDTO">
+        select user1.created_by, user1.created_time, user1.updated_by, user1.updated_time, user1.id, user1.remark, user1.login_name,
+        user1.nick_name, user1.user_type, user1.email, user1.phone, user1.password, user1.gender,
+        user1.avatar, user1.status, user1.identity_num, user1.organization_id, user1.department_id, org.organization_name
+        from system_user_base as user1
+        left join system_organization org on org.id = user1.organization_id
+
+        <where>
+            user1.organization_id = #{organizationId} and user1.deleted_flag = 'N'
+
+            <if test="departmentId != null  and departmentId != ''">
+                and  user1.department_id = #{departmentId}
+            </if>
+        </where>
+    </select>
+</mapper>

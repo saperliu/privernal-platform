@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.flow.mapper.FlowFormFieldPermMapper">
+
+    <sql id="selectFlowFormFieldPermVo">
+        select id, tenant_id, revision, created_by, created_time, updated_by, updated_time,
+               deleted_flag, deleted_by, deleted_time, department_id, organization_id, remark,
+               version_id, flow_code, version, node_code, field_code, field_name,
+               is_show, is_edit, is_required, default_type, default_value, dict_type, sort
+        from flow_form_field_perm as flowFormFieldPerm
+    </sql>
+
+    <select id="selectFlowFormFieldPermList" parameterType="com.privernal.flow.domain.FlowFormFieldPerm"
+            resultType="com.privernal.flow.domain.FlowFormFieldPerm">
+        <include refid="selectFlowFormFieldPermVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="versionId != null and versionId != ''">and flowFormFieldPerm.version_id = #{versionId}</if>
+            <if test="flowCode != null and flowCode != ''">and flowFormFieldPerm.flow_code = #{flowCode}</if>
+            <if test="version != null">and flowFormFieldPerm.version = #{version}</if>
+            <if test="nodeCode != null and nodeCode != ''">and flowFormFieldPerm.node_code = #{nodeCode}</if>
+            <if test="fieldCode != null and fieldCode != ''">and flowFormFieldPerm.field_code = #{fieldCode}</if>
+        </where>
+        order by flowFormFieldPerm.node_code asc, flowFormFieldPerm.sort asc
+    </select>
+
+</mapper>

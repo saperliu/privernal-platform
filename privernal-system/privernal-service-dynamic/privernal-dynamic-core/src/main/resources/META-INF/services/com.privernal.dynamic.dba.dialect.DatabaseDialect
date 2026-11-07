@@ -1,0 +1,3 @@
+com.privernal.dynamic.dba.dialect.MySQLDialect
+com.privernal.dynamic.dba.dialect.PostgreSQLDialect
+com.privernal.dynamic.dba.dialect.SQLServerDialect

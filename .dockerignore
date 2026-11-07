@@ -1,0 +1,29 @@
+# 上下文为仓库根目录时（docker build -f privernal-server/Dockerfile .）的忽略清单。
+# 注意：Docker 只读取「构建上下文根目录」下的 .dockerignore。
+# 若按 README 用 privernal-server/ 作为上下文，生效的是 privernal-server/.dockerignore。
+
+# 构建产物
+**/target/
+!**/target/privernal-server.jar
+**/pom-xml-flattened
+
+# 本机配置与凭据
+**/application-local.yaml
+**/application-dev.yaml
+.env
+.env.*
+
+# 版本控制 / IDE / 工具产物
+.git/
+.github/
+.idea/
+.mimosa/
+*.iml
+.devcontainer/
+
+# 日志与临时文件
+logs/
+**/logs/
+*.log
+.DS_Store
+schedule-tests/

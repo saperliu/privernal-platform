@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemCommonGroupMenuMapper">
+
+    <resultMap type="com.privernal.system.dto.SystemCommonGroupMenuDTO" id="SystemCommonGroupMenuResult">
+
+        <result property="id"    column="id" />
+
+        <result property="menuId"    column="menu_id" />
+
+        <result property="commonGroupId"    column="common_group_id" />
+
+        <result property="status"    column="status" />
+
+        <result property="remark"    column="remark" />
+
+        <result property="tenantId"    column="tenant_id" />
+
+        <result property="revision"    column="revision" />
+
+        <result property="createdBy"    column="created_by" />
+
+        <result property="createdTime"    column="created_time" />
+
+        <result property="updatedBy"    column="updated_by" />
+
+        <result property="updatedTime"    column="updated_time" />
+
+        <result property="deletedFlag"    column="deleted_flag" />
+
+        <result property="deletedBy"    column="deleted_by" />
+
+        <result property="deletedTime"    column="deleted_time" />
+
+        <result property="organizationId"    column="organization_id" />
+        <result property="mustMenu" column="must_menu"/>
+        <result property="visibleMenu" column="visible_menu"/>
+    </resultMap>
+
+    <sql id="selectSystemCommonGroupMenuVo">
+        select
+             commonGroupMenu.id, commonGroupMenu.menu_id, commonGroupMenu.common_group_id, commonGroupMenu.status, commonGroupMenu.remark, commonGroupMenu.tenant_id, commonGroupMenu.revision,
+             commonGroupMenu.created_by, commonGroupMenu.created_time, commonGroupMenu.updated_by, commonGroupMenu.updated_time, commonGroupMenu.deleted_flag, commonGroupMenu.deleted_by,
+             commonGroupMenu.must_menu,commonGroupMenu.visible_menu,
+             commonGroupMenu.deleted_time, commonGroupMenu.organization_id from system_common_group_menu as commonGroupMenu
+    </sql>
+
+    <select id="selectSystemCommonGroupMenuList" parameterType="com.privernal.system.filter.SystemCommonGroupMenuFilterDTO" resultMap="SystemCommonGroupMenuResult">
+        <include refid="selectSystemCommonGroupMenuVo"/>
+        <where>
+            commonGroupMenu.deleted_flag = 'N'
+            <if test="menuId != null  and menuId != ''"> and commonGroupMenu.menu_id = #{menuId}</if>
+            <if test="commonGroupId != null  and commonGroupId != ''"> and commonGroupMenu.common_group_id = #{commonGroupId}</if>
+            <if test="status != null "> and commonGroupMenu.status = #{status}</if>
+            <if test="remark != null  and remark != ''"> and commonGroupMenu.remark = #{remark}</if>
+            <if test="organizationId != null  and organizationId != ''"> and commonGroupMenu.organization_id = #{organizationId}</if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    commonGroupMenu.remark like concat('%', #{item}, '%')
+                    or commonGroupMenu.title like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by commonGroupMenu.created_time desc
+    </select>
+
+
+
+    <resultMap type="com.privernal.system.dto.SystemCommonGroupMenuDTO" id="SystemCommonGroupResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="menuId"    column="menu_id"    />
+        <result property="menuName"    column="menu_name"    />
+        <result property="menuType"    column="menu_type"    />
+        <result property="permission"    column="permission"    />
+        <result property="status"    column="status"    />
+        <result property="parentId"    column="parent_id"    />
+        <result property="mustMenu" column="must_menu"/>
+        <result property="visibleMenu" column="visible_menu"/>
+    </resultMap>
+
+    <select id="selectCommGroupMenuListByCommonGroupId" parameterType="com.privernal.system.filter.SystemCommonGroupMenuFilterDTO" resultMap="SystemCommonGroupResult">
+        select distinct
+
+        appMenu.id,appMenu.must_menu,appMenu.visible_menu, menu.remark, menu.menu_name,menu.id as menu_id,menu.permission as permission,
+        menu.menu_type,  menu.status, menu.organization_id, menu.parent_id,menu.order_num
+
+        from system_common_group_menu as appMenu
+        left join system_menu as menu on appMenu.menu_id = menu.id
+
+        <where>
+            menu.visible=1 and  appMenu.deleted_flag='N'  and menu.deleted_flag = 'N' and menu.app_menu=0
+            <if test="commonGroupId != null  and commonGroupId != ''">and appMenu.common_group_id = #{commonGroupId}</if>
+            <if test="menuId != null  and menuId != ''">and appMenu.menu_id = #{menuId}</if>
+            <if test="status != null ">and appMenu.status = #{status}</if>
+            <if test="organizationId != null  and organizationId != ''">and appMenu.organization_id =
+                #{organizationId}
+            </if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    appMenu.remark like concat('%', #{item}, '%')
+                    or
+                    menu.menu_name like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by menu.parent_id, menu.order_num desc
+    </select>
+
+</mapper>

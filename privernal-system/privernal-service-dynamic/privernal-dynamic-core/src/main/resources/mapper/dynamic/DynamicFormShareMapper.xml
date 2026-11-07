@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.dynamic.advanced.mapper.DynamicFormShareMapper">
+
+    <!-- 时间/配额表达式走 privernal.dialect 片段（MySQL: NOW()/GREATEST，SQLite: datetime/max 标量） -->
+
+    <!-- 原子消费一次提交名额：仅当启用、未过期、未达上限时 submit_count+1。
+         返回 0 行 = 名额不可用（停用/过期/超限），调用方对外一律 404，不区分原因（§5.3-4）。 -->
+    <update id="consumeSubmitQuota">
+        UPDATE dynamic_form_share SET submit_count = submit_count + 1, updated_time = <include refid="privernal.dialect.nowS"/>
+        WHERE id = #{shareId} AND deleted_flag = 'N' AND enabled = 'Y'
+          AND (expire_time IS NULL OR expire_time &gt; <include refid="privernal.dialect.nowS"/>)
+          AND (submit_limit IS NULL OR submit_count &lt; submit_limit)
+    </update>
+
+    <!-- 提交成功后回退名额（后续落库/回执生成失败时补偿，避免幽灵占额） -->
+    <update id="releaseSubmitQuota">
+        UPDATE dynamic_form_share SET submit_count = <include refid="privernal.dialect.quotaDec"/>, updated_time = <include refid="privernal.dialect.nowS"/>
+        WHERE id = #{shareId}
+    </update>
+
+</mapper>

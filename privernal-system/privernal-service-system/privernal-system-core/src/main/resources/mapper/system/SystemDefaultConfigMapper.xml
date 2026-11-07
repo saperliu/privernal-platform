@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemDefaultConfigMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemDefaultConfig" id="SystemDefaultConfigResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="configKey"    column="config_key"    />
+        <result property="configValue"    column="config_value"
+                jdbcType="JAVA_OBJECT" javaType="java.lang.Object"
+                typeHandler="com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler"/>
+        <result property="configName"    column="config_name"    />
+    </resultMap>
+
+    <sql id="selectSystemDefaultConfigVo">
+        select tenant_id, revision, created_by, created_time, updated_by, updated_time, deleted_flag, deleted_by, deleted_time, id, remark, organization_id, config_key, config_value, config_name from system_default_config as defaultConfig
+    </sql>
+
+    <select id="selectSystemDefaultConfigList" parameterType="com.privernal.system.filter.SystemDefaultConfigFilterDTO" resultMap="SystemDefaultConfigResult">
+        <include refid="selectSystemDefaultConfigVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="remark != null  and remark != ''"> and remark = #{remark}</if>
+            <if test="organizationId != null  and organizationId != ''"> and organization_id = #{organizationId}</if>
+            <if test="configKey != null  and configKey != ''"> and config_key = #{configKey}</if>
+            <if test="configValue != null  and configValue != ''"> and config_value = #{configValue}</if>
+            <if test="configName != null  and configName != ''"> and config_name like concat('%', #{configName}, '%')</if>
+        </where>
+    </select>
+
+    <select id="selectConfigListByKey"  resultMap="SystemDefaultConfigResult">
+        <include refid="selectSystemDefaultConfigVo"/>
+        <where>
+            deleted_flag = 'N' and config_key =  #{key}
+        </where>
+    </select>
+
+
+    <select id="selectConfigNetAddressList"  resultMap="SystemDefaultConfigResult">
+        <include refid="selectSystemDefaultConfigVo"/>
+        <where>
+            deleted_flag = 'N' and config_key = 'NET_ADDRESS'
+        </where>
+    </select>
+
+
+</mapper>

@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemSocialUserMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemSocialUser" id="SystemSocialUserResult">
+        <result property="id"    column="id"    />
+        <result property="uuid"    column="uuid"    />
+        <result property="source"    column="source"    />
+        <result property="appCode"    column="app_code"    />
+        <result property="accessToken"    column="access_token"    />
+        <result property="expireIn"    column="expire_in"    />
+        <result property="refreshToken"    column="refresh_token"    />
+        <result property="openId"    column="open_id"    />
+        <result property="uid"    column="uid"    />
+        <result property="accessCode"    column="access_code"    />
+        <result property="unionId"    column="union_id"    />
+        <result property="scope"    column="scope"    />
+        <result property="tokenType"    column="token_type"    />
+        <result property="idToken"    column="id_token"    />
+        <result property="macAlgorithm"    column="mac_algorithm"    />
+        <result property="macKey"    column="mac_key"    />
+        <result property="code"    column="code"    />
+        <result property="oauthToken"    column="oauth_token"    />
+        <result property="oauthTokenSecret"    column="oauth_token_secret"    />
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="remark"    column="remark"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="departmentId"    column="department_id"    />
+    </resultMap>
+
+    <sql id="selectSystemSocialUserVo">
+        select id, uuid, source, app_code, access_token, expire_in, refresh_token, open_id, uid, access_code, union_id, scope, token_type, id_token, mac_algorithm, mac_key, code, oauth_token, oauth_token_secret, tenant_id, revision, created_by, created_time, updated_by, updated_time, deleted_flag, remark, deleted_by, deleted_time, organization_id, department_id from system_social_user as socialUser
+    </sql>
+
+    <select id="selectSystemSocialUserList" parameterType="com.privernal.system.filter.SystemSocialUserFilterDTO" resultMap="SystemSocialUserResult">
+        <include refid="selectSystemSocialUserVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="id != null  and id != ''"> and id = #{id}</if>
+            <if test="uuid != null  and uuid != ''"> and uuid = #{uuid}</if>
+            <if test="source != null  and source != ''"> and source = #{source}</if>
+            <if test="appCode != null  and appCode != ''"> and app_code = #{appCode}</if>
+            <if test="accessToken != null  and accessToken != ''"> and access_token = #{accessToken}</if>
+            <if test="expireIn != null "> and expire_in = #{expireIn}</if>
+            <if test="refreshToken != null  and refreshToken != ''"> and refresh_token = #{refreshToken}</if>
+            <if test="openId != null  and openId != ''"> and open_id = #{openId}</if>
+            <if test="uid != null  and uid != ''"> and uid = #{uid}</if>
+            <if test="accessCode != null  and accessCode != ''"> and access_code = #{accessCode}</if>
+            <if test="unionId != null  and unionId != ''"> and union_id = #{unionId}</if>
+            <if test="scope != null  and scope != ''"> and scope = #{scope}</if>
+            <if test="tokenType != null  and tokenType != ''"> and token_type = #{tokenType}</if>
+            <if test="idToken != null  and idToken != ''"> and id_token = #{idToken}</if>
+            <if test="macAlgorithm != null  and macAlgorithm != ''"> and mac_algorithm = #{macAlgorithm}</if>
+            <if test="macKey != null  and macKey != ''"> and mac_key = #{macKey}</if>
+            <if test="code != null  and code != ''"> and code = #{code}</if>
+            <if test="oauthToken != null  and oauthToken != ''"> and oauth_token = #{oauthToken}</if>
+            <if test="oauthTokenSecret != null  and oauthTokenSecret != ''"> and oauth_token_secret = #{oauthTokenSecret}</if>
+            <if test="remark != null  and remark != ''"> and remark = #{remark}</if>
+            <if test="organizationId != null  and organizationId != ''"> and organization_id = #{organizationId}</if>
+            <if test="departmentId != null  and departmentId != ''"> and department_id = #{departmentId}</if>
+        </where>
+    </select>
+
+
+    <select id="selectSysSocialUserByUser" parameterType="com.privernal.system.domain.SystemUserSocialUser" resultMap="SystemSocialUserResult">
+        select
+        temp.id,
+        uuid,
+        app_code,
+        source,
+        access_token,
+        expire_in,
+        refresh_token,
+        open_id,
+        uid,
+        access_code,
+        union_id,
+        scope,
+        token_type,
+        id_token,
+        mac_algorithm,
+        mac_key,
+        code,
+        oauth_token,
+        oauth_token_secret
+        from system_social_user temp
+        left join system_user_social_user social on social.social_user_id = temp.id
+        <where>
+             temp.deleted_flag = 'N' and social.deleted_flag = 'N'
+            <if test="userId != null and userId != ''">
+                AND social.user_id = #{userId}
+            </if>
+            <if test="socialUserId != null and socialUserId != ''">
+                AND temp.id = #{socialUserId}
+            </if>
+        </where>
+
+    </select>
+
+    <resultMap type="com.privernal.system.domain.SystemUser" id="SysUserResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="loginName"    column="login_name"    />
+        <result property="nickName"    column="nick_name"    />
+        <result property="userType"    column="user_type"    />
+        <result property="email"    column="email"    />
+        <result property="phone"    column="phone"    />
+        <result property="password"    column="password"    />
+        <result property="gender"    column="gender"    />
+        <result property="avatar"    column="avatar"    />
+        <result property="status"    column="status"    />
+        <result property="identityNum"    column="identity_num"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="departmentId"    column="department_id"    />
+    </resultMap>
+
+    <select id="selectSysUserBySocial" parameterType="com.privernal.system.dto.SystemSocialUserDTO" resultMap="SysUserResult">
+        select  u.tenant_id, u.revision, u.created_by, u.created_time, u.updated_by, u.updated_time, u.deleted_flag, u.deleted_by, u.deleted_time, u.id,
+                u.remark, u.login_name, u.nick_name, u.user_type, u.email, u.phone, u.password, u.gender, u.avatar, u.status, u.identity_num, u.organization_id, u.department_id
+        from system_user_base u
+                 left join system_user_social_user usu on usu.user_id = u.id
+                 left join system_social_user su on su.id = usu.social_user_id
+        WHERE  su.open_id = #{openId} and su.app_code = #{appCode}
+
+
+    </select>
+
+</mapper>

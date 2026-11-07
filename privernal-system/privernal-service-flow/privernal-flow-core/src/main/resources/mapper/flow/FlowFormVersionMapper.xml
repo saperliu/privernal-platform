@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.flow.mapper.FlowFormVersionMapper">
+
+    <sql id="selectFlowFormVersionVo">
+        select id, tenant_id, revision, created_by, created_time, updated_by, updated_time,
+               deleted_flag, deleted_by, deleted_time, department_id, organization_id, remark,
+               flow_code, flow_name, table_code, form_name, version, publish_status, current_flag,
+               publish_time, publish_by
+        from flow_form_version as flowFormVersion
+    </sql>
+
+    <select id="selectFlowFormVersionList" parameterType="com.privernal.flow.domain.FlowFormVersion"
+            resultType="com.privernal.flow.domain.FlowFormVersion">
+        <include refid="selectFlowFormVersionVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="flowCode != null and flowCode != ''">and flowFormVersion.flow_code = #{flowCode}</if>
+            <if test="flowName != null and flowName != ''">and flowFormVersion.flow_name like concat('%', #{flowName}, '%')</if>
+            <if test="tableCode != null and tableCode != ''">and flowFormVersion.table_code = #{tableCode}</if>
+            <if test="formName != null and formName != ''">and flowFormVersion.form_name like concat('%', #{formName}, '%')</if>
+            <if test="publishStatus != null">and flowFormVersion.publish_status = #{publishStatus}</if>
+        </where>
+        order by flowFormVersion.flow_code asc, flowFormVersion.version desc
+    </select>
+
+</mapper>

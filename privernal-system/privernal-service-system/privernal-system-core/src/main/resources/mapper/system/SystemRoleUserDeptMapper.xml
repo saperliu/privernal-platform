@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemRoleUserDeptMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemRoleUserDept" id="SystemRoleUserDeptResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="roleUserId"    column="role_user_id"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="departmentId"    column="department_id"    />
+        <result property="authWay"    column="auth_way"    />
+    </resultMap>
+
+    <sql id="selectSystemRoleUserDeptVo">
+        select tenant_id, revision, created_by, created_time, updated_by, updated_time, deleted_flag, deleted_by, deleted_time, id, remark, role_user_id, organization_id, department_id,auth_way from system_role_user_dept as roleUserDept
+    </sql>
+    <select id="selectSystemRoleUserDeptList" parameterType="com.privernal.system.filter.SystemRoleUserDeptFilterDTO" resultMap="SystemRoleUserDeptResult">
+        <include refid="selectSystemRoleUserDeptVo"/>
+        <where>
+            roleUserDept.deleted_flag = 'N'
+            <if test="remark != null  and remark != ''"> and remark = #{remark}</if>
+            <if test="roleUserId != null  and roleUserId != ''"> and role_user_id = #{roleUserId}</if>
+            <if test="organizationId != null  and organizationId != ''"> and organization_id = #{organizationId}</if>
+            <if test="departmentId != null  and departmentId != ''"> and department_id = #{departmentId}</if>
+        </where>
+    </select>
+
+
+    <resultMap type="com.privernal.system.dto.SystemRoleUserDeptDTO" id="SystemRoleUserDeptDTOResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="roleUserId"    column="role_user_id"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="departmentId"    column="department_id"    />
+        <result property="deptName"    column="dept_name"    />
+        <result property="status"    column="status"    />
+        <result property="authWay"    column="auth_way"    />
+    </resultMap>
+    <select id="selectSystemRoleUserDeptDTOList" parameterType="com.privernal.system.filter.SystemRoleUserDeptFilterDTO" resultMap="SystemRoleUserDeptDTOResult">
+        select roleUserDept.tenant_id, roleUserDept.revision, roleUserDept.created_by, roleUserDept.created_time, roleUserDept.updated_by,
+               roleUserDept.updated_time,roleUserDept.id, roleUserDept.remark, roleUserDept.role_user_id, roleUserDept.organization_id,
+               roleUserDept.department_id, roleUserDept.auth_way, dept.dept_name, dept.status
+
+        from system_role_user_dept as roleUserDept
+        left join system_department as dept on dept.id = roleUserDept.department_id
+        <where>
+            roleUserDept.deleted_flag = 'N' and dept.deleted_flag = 'N'
+            <if test="remark != null  and remark != ''"> and remark = #{remark}</if>
+            <if test="roleUserId != null  and roleUserId != ''"> and role_user_id = #{roleUserId}</if>
+            <if test="organizationId != null  and organizationId != ''"> and organization_id = #{organizationId}</if>
+            <if test="departmentId != null  and departmentId != ''"> and department_id = #{departmentId}</if>
+        </where>
+    </select>
+
+    <select id="selectSystemRoleUserDeptByRoleUserId" parameterType="String" resultMap="SystemRoleUserDeptResult">
+        <include refid="selectSystemRoleUserDeptVo"/>
+        <where>
+            roleUserDept.deleted_flag = 'N' and roleUserDept.role_user_id = #{userId}
+        </where>
+    </select>
+
+    <select id="selectSystemRoleUserDeptByRoleUserIdAndDeptId" parameterType="String" resultMap="SystemRoleUserDeptResult">
+        <include refid="selectSystemRoleUserDeptVo"/>
+        <where>
+            roleUserDept.deleted_flag = 'N' and roleUserDept.role_user_id = #{userId} and roleUserDept.department_id = #{deptId}
+        </where>
+    </select>
+
+
+    <resultMap type="com.privernal.system.dto.SystemDepartmentDTO" id="SystemDepartmentResult">
+        <result property="createdBy" column="created_by"/>
+        <result property="createdTime" column="created_time"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="updatedTime" column="updated_time"/>
+        <result property="id" column="id"/>
+        <result property="remark" column="remark"/>
+        <result property="deptCode" column="dept_code"/>
+        <result property="deptName" column="dept_name"/>
+        <result property="orderNum" column="order_num"/>
+        <result property="leaderId" column="leader_id"/>
+        <result property="leaderName" column="leader_name"/>
+        <result property="status" column="status"/>
+        <result property="organizationId" column="organization_id"/>
+        <result property="roleUserId" column="role_user_id"/>
+        <result property="roleUserDeptId" column="role_user_dept_id"/>
+        <result property="roleUserDeptId" column="auth_way"/>
+    </resultMap>
+
+    <select id="selectSystemDeptByUserIdAndRoleId" parameterType="String" resultMap="SystemDepartmentResult">
+        select department.created_by,
+               department.created_time,
+               department.updated_by,
+               department.updated_time,
+               department.id,
+               department.remark,
+               department.dept_code,
+               department.dept_name,
+               department.order_num,
+               department.leader_id,
+               department.status,
+               roleUser.id as role_user_id,
+               roleUserDept.id as role_user_dept_id,
+               roleUserDept.auth_way as auth_way,
+               department.organization_id
+        from system_role_user_dept as roleUserDept
+                 left join system_department as department on roleUserDept.department_id = department.id
+                 left join system_role_user as roleUser on roleUser.id = roleUserDept.role_user_id
+        where department.deleted_flag = 'N'
+          and roleUserDept.deleted_flag = 'N'
+          and roleUser.user_id = #{userId}
+          and roleUser.role_id = #{roleId}
+
+    </select>
+
+
+    <select id="selectSystemRoleUserDeptByDeptId" parameterType="String" resultMap="SystemRoleUserDeptResult">
+        <include refid="selectSystemRoleUserDeptVo"/>
+        <where>
+            roleUserDept.deleted_flag = 'N' and roleUserDept.department_id = #{deptId}
+        </where>
+    </select>
+</mapper>

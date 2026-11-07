@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemUserSocialUserMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemUserSocialUser" id="SystemUserSocialUserResult">
+        <result property="id"    column="id"    />
+        <result property="userId"    column="user_id"    />
+        <result property="socialUserId"    column="social_user_id"    />
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="remark"    column="remark"    />
+    </resultMap>
+
+    <sql id="selectSystemUserSocialUserVo">
+        select id, user_id, social_user_id, tenant_id, revision, created_by, created_time, updated_by, updated_time, deleted_flag, deleted_by, deleted_time, remark from system_user_social_user as userSocialUser
+    </sql>
+
+    <select id="selectSystemUserSocialUserList" parameterType="com.privernal.system.filter.SystemUserSocialUserFilterDTO" resultMap="SystemUserSocialUserResult">
+        <include refid="selectSystemUserSocialUserVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="id != null  and id != ''"> and id = #{id}</if>
+            <if test="userId != null  and userId != ''"> and user_id = #{userId}</if>
+            <if test="socialUserId != null  and socialUserId != ''"> and social_user_id = #{socialUserId}</if>
+            <if test="remark != null  and remark != ''"> and remark = #{remark}</if>
+        </where>
+    </select>
+
+    <select id="selectSysUserSocialUserByOpenId" parameterType="String" resultMap="SystemUserSocialUserResult">
+        select
+            temp.id,
+            temp.user_id,
+            temp.social_user_id
+        from system_user_social_user temp
+                 left join system_social_user  social on temp.social_user_id = social.id
+        WHERE temp.deleted_flag = 'N' and social.open_id =#{openId}
+
+    </select>
+
+    <select id="selectSysUserSocialUserByUnionId" parameterType="String" resultMap="SystemUserSocialUserResult">
+        select
+            temp.id,
+            temp.user_id,
+            temp.social_user_id
+        from system_user_social_user temp
+                 left join system_social_user  social on temp.social_user_id = social.id
+        WHERE temp.deleted_flag = 'N' and social.union_id =#{unionId} and social.organization_id = #{organizationId}
+
+    </select>
+
+    <select id="selectSysUserSocialUserByUserId" parameterType="String" resultMap="SystemUserSocialUserResult">
+        select
+            temp.id,
+            temp.user_id,
+            temp.social_user_id
+        from system_user_social_user temp
+        WHERE temp.deleted_flag = 'N' and temp.user_id =#{userId}
+    </select>
+</mapper>

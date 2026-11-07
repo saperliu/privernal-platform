@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemFileInfoMapper">
+
+    <resultMap type="com.privernal.system.dto.SystemFileInfoDTO" id="SystemFileInfoResult">
+        <result property="id"    column="id"    />
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="departmentId"    column="department_id"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="remark"    column="remark"    />
+        <result property="module"    column="module"    />
+        <result property="sourceId"    column="source_id"    />
+        <result property="sourceStage"    column="source_stage"    />
+        <result property="type"    column="type"    />
+        <result property="imagePath"    column="image_path"    />
+        <result property="imageUrl"    column="image_url"    />
+        <result property="originalName"    column="original_name"    />
+        <result property="newName"    column="new_name"    />
+        <result property="fileSize"    column="file_size"    />
+        <result property="fileStoreType"    column="file_store_type"    />
+    </resultMap>
+
+    <sql id="selectSystemFileInfoVo">
+        select id, tenant_id, revision, created_by, created_time, updated_by, updated_time, deleted_flag, deleted_by, deleted_time, department_id, organization_id, remark, module, source_id, source_stage, type, image_path, image_url, original_name, new_name, file_size, file_store_type from system_file_info as fileInfo
+    </sql>
+
+    <select id="selectSystemFileInfoList" parameterType="com.privernal.system.filter.SystemFileInfoFilterDTO" resultMap="SystemFileInfoResult">
+        <include refid="selectSystemFileInfoVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="departmentId != null  and departmentId != ''"> and department_id = #{departmentId}</if>
+            <if test="organizationId != null  and organizationId != ''"> and organization_id = #{organizationId}</if>
+            <if test="remark != null  and remark != ''"> and remark = #{remark}</if>
+            <if test="sourceId != null  and sourceId != ''"> and source_id = #{sourceId}</if>
+            <if test="module != null  and module != ''"> and module = #{module}</if>
+            <if test="sourceStage != null  and sourceStage != ''"> and source_stage = #{sourceStage}</if>
+            <if test="type != null  and type != ''"> and type = #{type}</if>
+            <if test="imagePath != null  and imagePath != ''"> and image_path = #{imagePath}</if>
+            <if test="imageUrl != null  and imageUrl != ''"> and image_url = #{imageUrl}</if>
+            <if test="originalName != null  and originalName != ''"> and original_name like concat('%', #{originalName}, '%')</if>
+            <if test="newName != null  and newName != ''"> and new_name like concat('%', #{newName}, '%')</if>
+            <if test="fileSize != null "> and file_size = #{fileSize}</if>
+            <if test="fileStoreType != null  and fileStoreType != ''"> and file_store_type = #{fileStoreType}</if>
+        </where>
+    </select>
+
+
+</mapper>

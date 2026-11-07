@@ -1,0 +1,186 @@
+server:
+  port: 8600
+
+spring:
+  mvc:
+    pathmatch:
+      # 解决 swagger "this.condition" is null 的问题
+      matching-strategy: ant_path_matcher
+  main:
+    allow-bean-definition-overriding: true
+    allow-circular-references: true
+  application:
+    name: privernal-server
+
+  # application-local.yaml 不入库（含本机数据库口令），首次运行前从示例复制：
+  #   cp privernal-server/src/main/resources/application-local.yaml.example \
+  #      privernal-server/src/main/resources/application-local.yaml
+  profiles:
+    # 默认 pro：开源用户零配置启动即得到安全默认（主密钥留空 fail-closed、文档与监控关闭）。
+    # 本地开发请显式激活 local（IDEA 运行配置加 --spring.profiles.active=local）。
+    active: ${SPRING_PROFILES_ACTIVE:pro}
+
+# mybatis配置
+# 调度内核的 Micrometer 埋点（schedule.*）已注册，开启 metrics 端点供采集
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true # 虽然默认为 true ，但是还是显示去指定下。
+    # 全量 SQL 打到 stdout 只应在本地排查时开启（见 application-local.yaml.example），
+    # 默认走 slf4j，便于按 logger 级别与脱敏规则统一控制。
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  # 搜索指定包别名
+  type-aliases-package: com.privernal.**.domain
+  # 时间/JSON 自定义 TypeHandler：SQLite 模式下 Date/LocalDateTime 统一落
+  # yyyy-MM-dd HH:mm:ss 字符串（sqlite-jdbc 默认 epoch 毫秒与 TEXT 列读回不兼容），
+  # MySQL 下字符串字面量写 datetime 列同样合法
+  type-handlers-package: com.privernal.common.mybatis.type
+  # 配置mapper的扫描，找到所有的mapper.xml映射文件（warm/flow 为 warm-flow 引擎 jar 内映射文件）
+  mapper-locations: classpath*:/mapper/**/*.xml,classpath*:warm/flow/*.xml
+  check-config-location: true
+  global-config:
+    db-config:
+      logic-delete-value: Y # 逻辑已删除值(默认为 1)
+      logic-not-delete-value: N # 逻辑未删除值(默认为 0)
+      logic-delete-field: deletedFlag
+
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui
+  group-configs:
+    - group: 'default'
+      paths-to-match: '/**'
+      packages-to-scan: com.privernal.**.controller.**
+privernal:
+  auth:
+    # 新-5：初始密码（手机号后6位）登录拦截。true=拒绝初始密码登录（安全默认），
+    # 存量用户迁移期可临时置 false，改密走"忘记密码"短信链路
+    block-default-password: ${BLOCK_DEFAULT_PASSWORD:true}
+  web:
+    cors:
+      # 跨域来源白名单（逗号分隔，支持通配符端口）。默认仅放开本机开发端口；
+      # 生产若前后端不同源，必须显式声明真实来源，禁止配置 "*"（凭证跨域面）
+      allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
+    admin-ui:
+      # 管理后台 UI 地址，用于通知/跳转里拼绝对链接；未部署前端时留空
+      url: ${ADMIN_UI_URL:}
+  swagger:
+    title: ${SWAGGER_TITLE:春祈平台}
+    description: 提供管理后台与用户端的接口文档
+    version: 1.0.0
+    url: ${SWAGGER_URL:}
+    email: ${SWAGGER_EMAIL:}
+  # 大屏与数据集的多源接入（datav）。默认值一律是「关闭 / 不放行」，改动等于放开一条内网可达路径
+  datav:
+    # HTTP 数据源的域名白名单（逗号分隔）。留空只是不做域名限制，
+    # 内网/链路本地/云元数据地址的 SSRF 拦截与此无关，始终生效
+    http-host-whitelist: ${DATAV_HTTP_HOST_WHITELIST:}
+    # 外部数据库数据源总开关。这是让平台横向访问内网数据库的能力，
+    # 开启必须是运维的显式动作，因此默认关闭
+    db-source-enabled: ${DATAV_DB_SOURCE_ENABLED:false}
+    # 允许连接的数据库主机（逗号分隔）。留空 = 即使上面的开关已打开也谁都不许连，
+    # 配错成空串的后果是功能整体不可用，而不是等于不限制
+    db-host-whitelist: ${DATAV_DB_HOST_WHITELIST:}
+    # 大屏聚合结果缓存的 TTL（秒）。0 = 不缓存（默认）：开启前请确认缓存键里的
+    # 组织/部门/用户维度与你的数据权限口径一致，否则会把 A 看到的聚合结果发给 B
+    #
+    # 一个不写在代码里看不出来的连带效应：这一项为 0 时**降级能力也一起没了**——
+    # 上次快照的副本与结果同一处写入、同一个开关挡着，于是 loadStale 永远取不到东西，
+    # 「源站抖动时回退上次快照、不让整块屏变空白」这条承诺实际不会兑现，
+    # 真实行为是一抖就报错。想要降级就必须让本项 > 0。
+    #
+    # 建议生产值 20，且必须**小于前端 30s 刷新周期**：取到 30 或更大时，
+    # 组件每轮刷新都可能正好命中自己上一轮写下的缓存，画面看着在刷、数其实没更新，
+    # 而这种「刷新被自己吃掉」在界面上完全没有征兆，只能靠人盯 sql.log 才发现。
+    # 20 的取舍是：正常轮询每轮都真打库（数据不额外变旧），同时仍能合并
+    # 同一时刻多块屏、同屏多个同参组件的重复查询——那才是这个缓存要解决的问题。
+    cache-ttl-seconds: ${DATAV_CACHE_TTL_SECONDS:20}
+    # 取数失败时回退到上次快照的保留时长（秒），返回结果会带 stale=true 供前端提示。
+    # 依赖上面的 cache-ttl-seconds > 0 才有意义；900 = 最多可回退到 15 分钟前的快照，
+    # 因此前端必须把 stale 显示出来（投放页右下角横幅 + 组件「旧数据」角标），
+    # 否则值班的人看到的是一个看起来完全正常的旧数字。
+    cache-stale-ttl-seconds: ${DATAV_CACHE_STALE_TTL_SECONDS:900}
+    # ===== 投放屏抗雪崩闸门（M6.6）：默认全部关闭，与上面各 datav 开关同一交付姿态 =====
+    # 数据集熔断总开关。默认 false：开启等于允许平台在某数据集连续失败时主动短路拒绝取数
+    breaker-enabled: ${DATAV_BREAKER_ENABLED:false}
+    # 连续失败多少次后熔断。建议生产值 3：投放屏 30s 一轮，3 次≈90s 持续失败才跳闸，
+    # 既容忍一次偶发抖动，又不至于在跳闸前反复打库
+    breaker-failure-threshold: ${DATAV_BREAKER_FAILURE_THRESHOLD:3}
+    # 熔断冷却时长（毫秒）。建议生产值 30000：与前端 30s 刷新周期对齐，
+    # 冷却末端恰好进入半开做一次探测，恢复即闭合、失败即再冷却一轮
+    breaker-cooldown-millis: ${DATAV_BREAKER_COOLDOWN_MILLIS:30000}
+    # 同时在跑的大屏取数上限。0（默认）= 不限，保持今日行为；建议生产值 8：
+    # 连接池 10 时留 2 条给设计态预览与报表，8 条给持续轮询，避免轮询占满连接池
+    max-concurrent-queries: ${DATAV_MAX_CONCURRENT_QUERIES:0}
+    # 排队等并发许可的上限（毫秒）。默认 2000：为一次取数多等 2s 观众无感，
+    # 再长就会让请求线程长期挂住反而加剧线程池压力，到点快速失败下一轮再来
+    query-acquire-timeout-millis: ${DATAV_QUERY_ACQUIRE_TIMEOUT_MILLIS:2000}
+
+# 不校验白名单
+ignore:
+  whites:
+    - /favicon.ico
+    - /auth/logout
+    - /auth/login
+    - /auth/login/challenge
+    - /auth/organization/**
+    - /auth/callback/**
+    - /auth/render/**
+    - /auth/sms/**
+    - /auth/reset/password
+    - /app/system/defaultConfig/net/list
+    - /auth/code
+    # A2：APP→PC web-view 令牌握手兑换（行权码即凭证，单次/60 秒）
+    - /auth/web/exchange
+    # 接口文档与监控端点（doc.html/v3/api-docs/swagger-ui/webjars/actuator）不进基础免登清单（R7）：
+    # pro 抓取 actuator 时在 application-pro.yaml 显式加入；local/dev 本地调试自行补充
+    - /socket/**
+    # 动态表单数据提交需要登录态（发起人、数据归属都取登录上下文），不再免登
+    # 本地上传文件的静态资源映射（LocalConfig：file.prefix=/statics），图片/附件回显免登录态
+    - /statics/**
+    # warm-flow 设计器静态页面（/warm-flow/** 接口仍需登录态）
+    - /warm-flow-ui/**
+    # OpenAPI 机器调用：由 OpenApiAuthFilter 独立验签，不建 sa-token 登录态，故这里对 sa-token 免登
+    - /openapi/**
+    # SSO(OIDC) 公开的渠道列表、授权跳转与 IdP 回调
+    - /auth/oidc/**
+    # 表单外链免登端点：有意回退上方"动态表单数据提交需要登录态"的决策。
+    # 回退理由——外链填写是明确的业务需求；补偿控制——只放 /pub/** 一个前缀（仅 5 个端点：
+    # meta 预检/提交/回执修改/查看列表/查看详情），免登链路自行完成 token 摘要定位组织与数据源、
+    # IP 限流、密码校验、回执码摘要、访问审计与字段级裁剪，管理端与运行时接口一律不放行
+    - /pub/**
+
+# 机读密钥（OpenAPI Secret / Webhook 签名密钥 / OIDC client_secret）的存储主密钥。
+# 这些密钥必须可逆存储：HMAC 验签要求服务端用同一密钥重算签名，所以库里存的是 AES/GCM 密文而不是 hash。
+# ⚠️ 生产环境务必用环境变量 OPENAPI_SECRET_MASTER_KEY 覆盖默认值；留空时创建凭证会直接报错，
+#    这是刻意的兜底，防止退化成明文入库。改了主密钥会导致既有密钥解不开，需要轮换。
+openapi:
+  secret-master-key:
+
+# F4 口令摘要主密钥（挑战-应答登录）：封存线摘要 AES-GCM 的密钥，留空=挑战登录关闭（全走 bcrypt 引导）。
+# 32 字节 hex 或任意 ≥32 字符口令短语；生产务必用环境变量 PASSWORD_DIGEST_MASTER_KEY 覆盖。
+# 改主密钥会导致既有封存摘要解不开，用户将回退 bcrypt 引导一次自动重新封存（可自愈）。
+#privernal.security.password-digest.require-challenge: false  # 过渡期口径：全量客户端上线后置 true 收掉旧口径重放面
+
+# warm-flow 工作流引擎配置（办理人权限处理器、全局监听器以 Spring Bean 方式注册，无需配置 path）
+warm-flow:
+  enabled: true
+  banner: false
+  # 设计器后端接口与静态页面开关
+  ui: true
+  # 与平台 Sa-Token 共享登录态：设计器页面从 URL 参数读取该名称的 token 并随请求携带
+  token-name: Authorization
+  key-type: SnowId19
+  logic-delete: false
+  # 仅 oracle 走特殊分页修正，sqlite 与 mysql 同走默认路径
+  data-source-type: sqlite

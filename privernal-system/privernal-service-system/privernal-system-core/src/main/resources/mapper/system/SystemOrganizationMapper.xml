@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemOrganizationMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemOrganization" id="SystemOrganizationResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="organizationName"    column="organization_name"    />
+        <result property="leaderName"    column="leader_name"    />
+        <result property="orderNum"    column="order_num"    />
+        <result property="leaderId"    column="leader_id"    />
+        <result property="status"    column="status"    />
+        <result property="organizationCode"    column="organization_code"    />
+        <result property="synType"    column="syn_type"    />
+    </resultMap>
+
+    <sql id="selectSystemOrganizationVo">
+        select organization.tenant_id, organization.revision, organization.created_by, organization.created_time, organization.updated_by, organization.updated_time, organization.deleted_flag,
+               organization.deleted_by, organization.deleted_time, user1.nick_name as leader_name,organization.syn_type,
+               organization.id, organization.remark, organization.organization_name, organization.order_num, organization.leader_id, organization.status, organization.organization_code
+        from system_organization as organization
+    </sql>
+
+    <select id="selectSystemOrganizationList" parameterType="com.privernal.system.filter.SystemOrganizationFilterDTO" resultMap="SystemOrganizationResult">
+        <include refid="selectSystemOrganizationVo"/>
+         left join system_user_base as user1 on organization.leader_id = user1.id
+        <where>
+            organization.deleted_flag = 'N'
+            <if test="remark != null  and remark != ''"> and organization.remark like concat('%', #{remark}, '%')</if>
+            <if test="organizationName != null  and organizationName != ''"> and organization.organization_name like concat('%', #{organizationName}, '%')</if>
+            <if test="orderNum != null "> and organization.order_num = #{orderNum}</if>
+            <if test="leaderId != null  and leaderId != ''"> and organization.leader_id = #{leaderId}</if>
+            <if test="status != null "> and organization.status = #{status}</if>
+            <if test="organizationCode != null  and organizationCode != ''">and organization.organization_code like
+                concat('%', #{organizationCode}, '%')
+            </if>
+            <if test="synType != null  and synType != ''"> and organization.syn_type = #{synType}</if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    organization.organization_name like concat('%', #{item}, '%')
+                    or organization.remark like concat('%', #{item}, '%')
+                    or organization.organization_code  like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by organization.created_time desc
+    </select>
+
+
+    <resultMap type="com.privernal.system.dto.SystemUserServiceOrgDTO" id="SystemUserServiceOrgDTO">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="userId"    column="user_id"    />
+        <result property="organizationId"    column="organization_id"    />
+        <result property="organizationName"    column="organization_name"    />
+        <result property="dataScope"    column="data_scope"    />
+        <result property="departmentId"    column="department_id"    />
+    </resultMap>
+    <select id="selectUserSystemOrganizationList" parameterType="String" resultMap="SystemUserServiceOrgDTO">
+        select userServiceOrg.tenant_id, userServiceOrg.revision, userServiceOrg.created_by, userServiceOrg.created_time, userServiceOrg.updated_by, userServiceOrg.updated_time,
+               userServiceOrg.deleted_flag, userServiceOrg.deleted_by, userServiceOrg.deleted_time, userServiceOrg.id, userServiceOrg.remark, organization.organization_name,
+                userServiceOrg.data_scope,userServiceOrg.department_id,userServiceOrg.organization_id
+        from system_organization as organization
+            left JOIN system_user_service_org as userServiceOrg  on organization.id = userServiceOrg.organization_id and userServiceOrg.deleted_flag = 'N'
+        WHERE organization.deleted_flag = 'N' and userServiceOrg.deleted_flag = 'N'
+          and organization.status = 1
+          and userServiceOrg.user_id = #{userId}
+    </select>
+
+    <select id="selectAllOrganizationList" resultMap="SystemUserServiceOrgDTO">
+        select organization.tenant_id, organization.revision, organization.created_by, organization.created_time, organization.updated_by, organization.updated_time,
+               organization.deleted_flag, organization.deleted_by, organization.deleted_time, organization.id, organization.id as organization_id, organization.remark, organization.organization_name
+        from system_organization as organization
+        WHERE organization.deleted_flag = 'N'
+          and organization.status = 1
+    </select>
+
+    <select id="selectOrganizationByCode" parameterType="String" resultMap="SystemOrganizationResult">
+        select organization.tenant_id, organization.revision, organization.created_by, organization.created_time, organization.updated_by, organization.updated_time,
+               organization.deleted_flag, organization.deleted_by, organization.deleted_time, organization.id, organization.organization_code, organization.remark, organization.organization_name
+        from system_organization as organization
+        WHERE organization.deleted_flag = 'N'
+          and organization.organization_code = #{code}
+    </select>
+
+</mapper>

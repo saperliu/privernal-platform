@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.flow.mapper.FlowQueryMapper">
+
+    <select id="selectTodoPage" resultType="com.privernal.flow.dto.FlowTaskListDTO">
+        SELECT t.*,
+               d.flow_code,
+               COALESCE(i.business_id, t.business_id) AS businessId,
+               <include refid="privernal.dialect.instanceBizTitle"/> AS business_title,
+               i.flow_name AS instance_flow_name
+        FROM flow_task t
+        LEFT JOIN flow_definition d ON d.id = t.definition_id
+        LEFT JOIN flow_instance i ON i.id = t.instance_id AND i.del_flag = '0'
+        WHERE t.del_flag = '0'
+        <if test="flags != null and flags.size() > 0">
+            AND EXISTS (
+                SELECT 1 FROM flow_user u
+                WHERE u.associated = t.id AND u.del_flag = '0'
+                AND u.processed_by IN
+                <foreach collection="flags" item="flag" open="(" separator="," close=")">#{flag}</foreach>
+            )
+        </if>
+        <if test="flowName != null and flowName != ''">AND t.flow_name LIKE CONCAT('%', #{flowName}, '%')</if>
+        <if test="businessId != null and businessId != ''">AND (t.business_id = #{businessId} OR EXISTS (SELECT 1 FROM flow_instance ib WHERE ib.id = t.instance_id AND ib.business_id = #{businessId} AND ib.del_flag = '0'))</if>
+        <if test="nodeName != null and nodeName != ''">AND t.node_name LIKE CONCAT('%', #{nodeName}, '%')</if>
+        <if test="timeStart != null and timeStart != ''">AND t.create_time &gt;= #{timeStart}</if>
+        <if test="timeEnd != null and timeEnd != ''">AND t.create_time &lt; concat(#{timeEnd}, ' 23:59:59')</if>
+        ORDER BY t.create_time DESC
+    </select>
+
+    <select id="selectDonePage" resultType="com.privernal.flow.dto.FlowHisTaskListDTO">
+        SELECT h.*,
+               d.flow_code,
+               COALESCE(i.business_id, h.business_id) AS businessId,
+               <include refid="privernal.dialect.instanceBizTitle"/> AS business_title,
+               i.flow_name AS instance_flow_name
+        FROM flow_his_task h
+        LEFT JOIN flow_instance i ON i.id = h.instance_id AND i.del_flag = '0'
+        LEFT JOIN flow_definition d ON d.id = h.definition_id
+        WHERE h.del_flag = '0'
+        AND (h.approver = #{userId} OR h.collaborator = #{userId})
+        <if test="flowName != null and flowName != ''">AND h.flow_name LIKE CONCAT('%', #{flowName}, '%')</if>
+        <if test="businessId != null and businessId != ''">AND (h.business_id = #{businessId} OR EXISTS (SELECT 1 FROM flow_instance ib WHERE ib.id = h.instance_id AND ib.business_id = #{businessId} AND ib.del_flag = '0'))</if>
+        <if test="timeStart != null and timeStart != ''">AND h.update_time &gt;= #{timeStart}</if>
+        <if test="timeEnd != null and timeEnd != ''">AND h.update_time &lt; concat(#{timeEnd}, ' 23:59:59')</if>
+        ORDER BY h.update_time DESC
+    </select>
+
+    <select id="selectInstancePage" resultType="com.privernal.flow.dto.FlowInstanceListDTO">
+        SELECT i.*,
+               d.flow_code,
+               <include refid="privernal.dialect.instanceBizTitle"/> AS business_title
+        FROM flow_instance i
+        LEFT JOIN flow_definition d ON d.id = i.definition_id
+        WHERE i.del_flag = '0'
+        <if test="createBy != null and createBy != ''">AND i.create_by = #{createBy}</if>
+        <if test="flowCode != null and flowCode != ''">AND EXISTS (
+            SELECT 1 FROM flow_definition d WHERE d.id = i.definition_id AND d.flow_code = #{flowCode}
+        )</if>
+        <if test="flowName != null and flowName != ''">AND i.flow_name LIKE CONCAT('%', #{flowName}, '%')</if>
+        <if test="businessId != null and businessId != ''">AND i.business_id = #{businessId}</if>
+        <if test="flowStatus != null and flowStatus != ''">AND i.flow_status = #{flowStatus}</if>
+        <if test="timeStart != null and timeStart != ''">AND i.create_time &gt;= #{timeStart}</if>
+        <if test="timeEnd != null and timeEnd != ''">AND i.create_time &lt; concat(#{timeEnd}, ' 23:59:59')</if>
+        ORDER BY i.create_time DESC
+    </select>
+
+    <select id="selectDefinitionPage" resultType="org.dromara.warm.flow.orm.entity.FlowDefinition">
+        SELECT d.*
+        FROM flow_definition d
+        WHERE d.del_flag = '0'
+        <if test="flowCode != null and flowCode != ''">AND d.flow_code LIKE CONCAT('%', #{flowCode}, '%')</if>
+        <if test="flowName != null and flowName != ''">AND d.flow_name LIKE CONCAT('%', #{flowName}, '%')</if>
+        <if test="category != null and category != ''">AND d.category = #{category}</if>
+        <if test="isPublish != null">AND d.is_publish = #{isPublish}</if>
+        ORDER BY d.update_time DESC
+    </select>
+
+    <select id="selectRunningInstanceByBusinessId" resultType="org.dromara.warm.flow.orm.entity.FlowInstance">
+        SELECT i.*
+        FROM flow_instance i
+        WHERE i.del_flag = '0'
+        AND i.business_id = #{businessId}
+        AND i.flow_status IN ('0', '1', '9', '11')
+        ORDER BY i.create_time DESC
+    </select>
+
+    <select id="selectLastInstanceByBusinessId" resultType="org.dromara.warm.flow.orm.entity.FlowInstance">
+        SELECT i.*
+        FROM flow_instance i
+        WHERE i.del_flag = '0'
+        AND i.business_id = #{businessId}
+        ORDER BY i.create_time DESC
+        LIMIT 1
+    </select>
+
+    <select id="countTodo" resultType="long">
+        SELECT COUNT(1)
+        FROM flow_task t
+        WHERE t.del_flag = '0'
+        <if test="flags != null and flags.size() > 0">
+            AND EXISTS (
+                SELECT 1 FROM flow_user u
+                WHERE u.associated = t.id AND u.del_flag = '0'
+                AND u.processed_by IN
+                <foreach collection="flags" item="flag" open="(" separator="," close=")">#{flag}</foreach>
+            )
+        </if>
+    </select>
+
+    <select id="countDone" resultType="long">
+        SELECT COUNT(1)
+        FROM flow_his_task h
+        WHERE h.del_flag = '0'
+        AND (h.approver = #{userId} OR h.collaborator = #{userId})
+    </select>
+
+    <select id="countMyInstance" resultType="long">
+        SELECT COUNT(1)
+        FROM flow_instance i
+        WHERE i.del_flag = '0'
+        AND i.create_by = #{userId}
+    </select>
+
+    <select id="selectTimeoutTasks" resultType="org.dromara.warm.flow.orm.entity.FlowTask">
+        SELECT t.*
+        FROM flow_task t
+        WHERE t.del_flag = '0'
+        AND t.create_time <![CDATA[ < ]]> <include refid="privernal.dialect.nowMinusHoursParam"/>
+        ORDER BY t.create_time ASC
+    </select>
+
+    <!-- 待办任务关联节点 ext（超时/抄送等运行时配置在节点 ext 中，Java 侧逐个解析判定） -->
+    <select id="selectTodoTasksWithNodeExt" resultType="com.privernal.flow.dto.FlowTodoTaskExtDTO">
+        SELECT
+            t.id          AS taskId,
+            t.definition_id AS definitionId,
+            t.instance_id AS instanceId,
+            t.node_code   AS nodeCode,
+            t.node_name   AS nodeName,
+            t.create_time AS createTime,
+            n.ext         AS nodeExt
+        FROM flow_task t
+        INNER JOIN flow_node n
+            ON n.definition_id = t.definition_id
+            AND n.node_code = t.node_code
+            AND n.del_flag = '0'
+        WHERE t.del_flag = '0'
+        ORDER BY t.create_time ASC
+    </select>
+
+    <!-- 流程标题回写（实例 + 当前待办任务） -->
+    <update id="updateInstanceFlowName">
+        UPDATE flow_instance SET flow_name = #{flowName} WHERE id = #{instanceId}
+    </update>
+
+    <update id="updateTaskFlowNameByInstance">
+        UPDATE flow_task SET flow_name = #{flowName} WHERE instance_id = #{instanceId} AND del_flag = '0'
+    </update>
+</mapper>

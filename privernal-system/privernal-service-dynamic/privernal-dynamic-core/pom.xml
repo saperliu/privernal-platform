@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>com.privernal</groupId>
+        <artifactId>privernal-service-dynamic</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>privernal-dynamic-core</artifactId>
+
+    <description>
+        动态表单服务
+    </description>
+
+    <dependencies>
+
+
+        <!-- SpringBoot Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-tomcat</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-undertow</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy-all</artifactId>
+            <type>pom</type>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy-jsr223</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.graalvm.sdk</groupId>
+            <artifactId>graal-sdk</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+
+        <!-- Xvri Common DataSource -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-datasource</artifactId>
+        </dependency>
+
+        <!-- Xvri Common DataScope -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-datascope</artifactId>
+        </dependency>
+
+        <!-- 定时任务级联取消 -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-job-api</artifactId>
+        </dependency>
+
+        <!-- Xvri Common Log -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-log</artifactId>
+        </dependency>
+
+        <!-- Xvri Api System -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-system-api</artifactId>
+        </dependency>
+
+        <!-- Xvri Api Flow（动态表单启用工作流时自动发起流程） -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-flow-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-mybatis</artifactId>
+        </dependency>
+
+        <!-- Xvri Common Swagger -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-web</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-dynamic-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+        </dependency>
+
+        <!-- 单据打印 PDF 归档（plan-sheet-print §3.5/M4，本地仓库离线版本）：
+             openhtmltopdf(Apache-2.0) + jsoup(MIT)，许可登记见 privernal-platform/NOTICE.md -->
+        <dependency>
+            <groupId>com.openhtmltopdf</groupId>
+            <artifactId>openhtmltopdf-core</artifactId>
+            <version>0.0.1-RC9</version>
+        </dependency>
+        <dependency>
+            <groupId>com.openhtmltopdf</groupId>
+            <artifactId>openhtmltopdf-pdfbox</artifactId>
+            <version>0.0.1-RC9</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.17.2</version>
+        </dependency>
+
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+
+</project>

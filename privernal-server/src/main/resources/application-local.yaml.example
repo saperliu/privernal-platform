@@ -1,0 +1,176 @@
+# ============================================================================
+# 本地开发配置示例。复制为 application-local.yaml 后填入你自己的值：
+#   cp application-local.yaml.example application-local.yaml
+# application-local.yaml 已被 .gitignore 忽略，不要把真实口令提交进来。
+#
+# 用 docker-compose 起依赖时（仓库根 `docker compose up -d`），下面的默认值
+# 即可直接工作；仅 MySQL 口令需要在两个文件里保持一致。
+# ============================================================================
+
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+
+  # 本地排查 SQL 时可放开：org.apache.ibatis.logging.stdout.StdOutImpl
+  # 注意它会把全量 SQL 与绑定参数打到 stdout，切勿用于共享环境
+
+  datasource:
+    druid:
+      stat-view-servlet:
+        # 连接池监控页（/druid/**），仅本地开启，口令自设
+        enabled: true
+        loginUsername: ${DRUID_STAT_USER:admin}
+        loginPassword: ${DRUID_STAT_PASSWORD:}
+    dynamic:
+      primary: master
+      # 指定库名却找不到对应数据源时直接抛错。默认的 false 会静默回落 master，
+      # 把业务数据写进主库且不给任何提示，排查代价远高于一次显式失败。
+      strict: true
+      druid:
+        initial-size: 5
+        min-idle: 5
+        maxActive: 20
+        maxWait: 60000
+        timeBetweenEvictionRunsMillis: 60000
+        minEvictableIdleTimeMillis: 300000
+        # SQLite 无 DUAL；MySQL 口径为 SELECT 1 FROM DUAL
+        validationQuery: SELECT 1
+        testWhileIdle: true
+        testOnBorrow: false
+        testOnReturn: false
+        poolPreparedStatements: true
+        maxPoolPreparedStatementPerConnectionSize: 20
+        filters: stat,slf4j
+      datasource:
+        # 主库数据源（默认 SQLite 单文件库，WAL + busy_timeout；建库脚本 release/sql/init-sqlite.sql，
+        # 从 MySQL 存量库迁移见 tools/sqlite-migration/README）
+        master:
+          driver-class-name: org.sqlite.JDBC
+          url: jdbc:sqlite:${SQLITE_DB_PATH:./data/privernal.db}?journal_mode=WAL&busy_timeout=10000
+          username:
+          password:
+        # 切回 MySQL 时注释掉上面的 master 并放开本段（初始化脚本见 sql/init.sql，
+        # 同时把 privernal.dynamic.database.type 改回 mysql、warm-flow.data-source-type 改回 mysql）
+        # master:
+        #   driver-class-name: com.mysql.cj.jdbc.Driver
+        #   url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:privernal}?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=GMT%2B8
+        #   username: ${MYSQL_USERNAME:root}
+        #   password: ${MYSQL_PASSWORD:}
+        # 从库数据源（读写分离时放开，并把 dynamic.primary 指向需要的库）
+        # slave:
+        #   url:
+        #   username:
+        #   password:
+
+privernal:
+  # 上传文件方式（LOCAL=本地磁盘，OSS/MINIO=对象存储）
+  upload:
+    type: ${UPLOAD_TYPE:LOCAL}
+  # 阿里云短信通道（登录短信验证码 / 找回密码；不使用短信登录可全部留空）
+  sms:
+    endpoint: ${SMS_ENDPOINT:dysmsapi.aliyuncs.com}
+    region: ${SMS_REGION:cn-beijing}
+    signName: ${SMS_SIGN_NAME:}
+    accessKeyId: ${SMS_ACCESS_KEY_ID:}
+    accessKeySecret: ${SMS_ACCESS_KEY_SECRET:}
+    loginTemplateCode: ${SMS_LOGIN_TEMPLATE_CODE:}
+  # 苹果授权登录（App 端 Sign in with Apple；不接 iOS 可留空）
+  apple:
+    keyId: ${APPLE_KEY_ID:}
+    keySecret: ${APPLE_KEY_SECRET:}
+    # 接入 Sign in with Apple 的应用 Bundle ID 与开发者 Team ID
+    client-id: ${APPLE_CLIENT_ID:}
+    team-id: ${APPLE_TEAM_ID:}
+
+  # IP 归属地查询：离线 xdb 数据文件路径，支持 file: 与 classpath: 前缀。
+  # 留空则不启用（登录日志的地址列记为「未知」）。数据文件需自备，见 sql/README.md 与 NOTICE.md。
+  ip-region:
+    db-path: ${IP_REGION_DB_PATH:}
+
+# Sa-Token 配置
+sa-token:
+  # token 名称（同时也是 cookie 名称），前端请求头 Authorization: Bearer <token>
+  token-name: Authorization
+  token-prefix: Bearer
+  token-session-check-login: false
+  # token 有效期（秒），默认 7 天，-1 代表永不过期
+  timeout: 604800
+  # token 临时有效期（指定时间内无操作即视为过期，秒）；-1 代表不启用
+  active-timeout: -1
+  # 是否允许同一账号并发登录
+  is-concurrent: true
+  # 多人同账号登录时是否共用一个 token
+  is-share: true
+  token-style: uuid
+  is-log: false
+  # Sa-Token 独立 Redis（与业务缓存分库，避免 token 与业务键互相冲刷）
+  alone-redis:
+    database: 5
+    host: ${REDIS_HOST:127.0.0.1}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    timeout: 10s
+
+# 登录验证码（math=算术题图片验证码）
+security:
+  captcha:
+    type: math
+    enabled: true
+
+# Socket.IO 长连接（消息推送 / 待办提醒）
+socketio:
+  application:
+    name: socket-service
+  reg-server: 127.0.0.1
+  host: 127.0.0.1
+  port: 16001
+  context: /socket
+  # 单帧最大数据量，防大包攻击
+  maxFramePayloadLength: 1048576
+  maxHttpContentLength: 1048576
+  bossCount: 1
+  workCount: 100
+  allowCustomRequests: true
+  # HTTP→WS 升级超时（毫秒）
+  upgradeTimeout: 100000
+  # 心跳超时与间隔（毫秒）
+  pingTimeout: 6000000
+  pingInterval: 25000
+
+app:
+  env: DEV
+  # App 端推送通道 app-key（不使用可留空）
+  ios:
+    app-key: ${APP_IOS_KEY:}
+  android:
+    app-key: ${APP_ANDROID_KEY:}
+
+# 第三方薪酬系统对接（可选集成，不使用留空）
+renlijia:
+  appId: ${RENLIJIA_APP_ID:}
+  appSecret: ${RENLIJIA_APP_SECRET:}
+
+# 本地磁盘上传（UPLOAD_TYPE=LOCAL 时生效）
+#   path    文件落盘目录（nginx 需将其以 <prefix> 静态映射出去）
+#   domain  回显地址前缀，指向承载静态映射的网关/前端
+#   prefix  后端静态资源映射前缀（与 LocalConfig 对应，一般不改）
+file:
+  domain: ${FILE_DOMAIN:http://localhost:8600}
+  path: ${FILE_PATH:./upload}
+  prefix: /statics
+
+# 对象存储：MinioClient 启动时无条件由 oss. 段装配（LOCAL 模式不会真正使用它），
+# endpoint/密钥留空会直接启动失败，因此默认给本地 MinIO 出厂占位值。
+# UPLOAD_TYPE=OSS：换成阿里云真实 endpoint 与密钥；
+# UPLOAD_TYPE=MINIO：把 OSS_ENDPOINT 指到 MinIO 地址（如 http://127.0.0.1:9000）即可，客户端同源。
+oss:
+  endpoint: ${OSS_ENDPOINT:http://127.0.0.1:9000}
+  accessKeyId: ${OSS_ACCESS_KEY_ID:minioadmin}
+  accessKeySecret: ${OSS_ACCESS_KEY_SECRET:minioadmin}
+  bucket: ${OSS_BUCKET:privernal}
+  path: ${OSS_PATH:images}
+  net-path: ${OSS_NET_PATH:}

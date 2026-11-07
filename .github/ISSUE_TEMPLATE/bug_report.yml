@@ -1,0 +1,45 @@
+name: Bug 报告
+description: 报告一个可复现的问题
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        安全漏洞请勿发在这里，按 SECURITY.md 的私密渠道报告。
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 实际行为与期望行为
+      placeholder: 提交表单后列表未刷新，期望是立即刷新
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从干净环境开始，逐步写清点击/请求与参数
+      value: |
+        1. 
+        2. 
+        3. 
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 环境
+      description: JDK 版本、数据库版本、profile、部署方式（docker compose / jar / 容器编排）
+      value: |
+        - JDK:
+        - MySQL:
+        - profile:
+        - 部署方式:
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: 相关日志或报错
+      description: 请贴服务端异常栈；如含手机号或 token 请先打码
+      render: shell

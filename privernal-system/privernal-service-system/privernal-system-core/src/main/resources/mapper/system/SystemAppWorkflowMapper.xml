@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemAppWorkflowMapper">
+
+    <resultMap type="com.privernal.system.dto.SystemAppWorkflowDTO" id="SystemAppWorkflowResult">
+
+        <result property="id"    column="id" />
+
+        <result property="appId"    column="app_id" />
+
+        <result property="workflowFormId"    column="workflow_form_id" />
+        <result property="name"    column="name" />
+
+        <result property="status"    column="status" />
+
+        <result property="remark"    column="remark" />
+
+        <result property="tenantId"    column="tenant_id" />
+
+        <result property="revision"    column="revision" />
+
+        <result property="createdBy"    column="created_by" />
+
+        <result property="createdTime"    column="created_time" />
+
+        <result property="updatedBy"    column="updated_by" />
+
+        <result property="updatedTime"    column="updated_time" />
+
+        <result property="deletedFlag"    column="deleted_flag" />
+
+        <result property="deletedBy"    column="deleted_by" />
+
+        <result property="deletedTime"    column="deleted_time" />
+
+        <result property="organizationId"    column="organization_id" />
+    </resultMap>
+
+    <sql id="selectSystemAppWorkflowVo">
+        select appWorkflow.id, appWorkflow.app_id, appWorkflow.workflow_form_id, appWorkflow.name, appWorkflow.status, appWorkflow.remark, appWorkflow.tenant_id, appWorkflow.revision, appWorkflow.created_by, appWorkflow.created_time, appWorkflow.updated_by, appWorkflow.updated_time, appWorkflow.deleted_flag, appWorkflow.deleted_by, appWorkflow.deleted_time, appWorkflow.organization_id from system_app_workflow as appWorkflow
+    </sql>
+
+    <select id="selectSystemAppWorkflowList" parameterType="com.privernal.system.filter.SystemAppWorkflowFilterDTO" resultMap="SystemAppWorkflowResult">
+        <include refid="selectSystemAppWorkflowVo"/>
+        <where>
+            appWorkflow.deleted_flag = 'N'
+            <if test="appId != null  and appId != ''"> and appWorkflow.app_id = #{appId}</if>
+            <if test="workflowFormId != null  and workflowFormId != ''"> and appWorkflow.workflow_form_id = #{workflowFormId}</if>
+            <if test="status != null "> and appWorkflow.status = #{status}</if>
+            <if test="remark != null  and remark != ''"> and appWorkflow.remark = #{remark}</if>
+            <if test="organizationId != null  and organizationId != ''"> and appWorkflow.organization_id = #{organizationId}</if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    appWorkflow.remark like concat('%', #{item}, '%')
+                    or appWorkflow.name like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by appWorkflow.created_time desc
+    </select>
+
+
+</mapper>

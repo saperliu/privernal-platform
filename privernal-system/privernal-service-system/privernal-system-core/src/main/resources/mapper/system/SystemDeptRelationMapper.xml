@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemDeptRelationMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemDeptRelation" id="SystemDeptRelationResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="parentId"    column="parent_id"    />
+        <result property="deptId"    column="dept_id"    />
+        <result property="level"    column="level"    />
+    </resultMap>
+
+    <sql id="selectSystemDeptRelationVo">
+        select tenant_id, revision, created_by, created_time, updated_by, updated_time, deleted_flag, deleted_by, deleted_time, id, remark, parent_id, dept_id, level from system_dept_relation as deptRelation
+    </sql>
+
+    <select id="selectSystemDeptRelationList" parameterType="com.privernal.system.filter.SystemDeptRelationFilterDTO" resultMap="SystemDeptRelationResult">
+        <include refid="selectSystemDeptRelationVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="remark != null  and remark != ''"> and remark = #{remark}</if>
+            <if test="parentId != null  and parentId != ''"> and parent_id = #{parentId}</if>
+            <if test="deptId != null  and deptId != ''"> and dept_id = #{deptId}</if>
+            <if test="level != null "> and level = #{level}</if>
+        </where>
+    </select>
+
+
+    <select id="selectUpParent" parameterType="String" resultMap="SystemDeptRelationResult">
+        <include refid="selectSystemDeptRelationVo"/>
+        <where>
+            deleted_flag = 'N'
+            and dept_id = #{id} and level = 1
+        </where>
+    </select>
+
+    <select id="selectAllParents" parameterType="String" resultMap="SystemDeptRelationResult">
+        <include refid="selectSystemDeptRelationVo"/>
+        <where>
+            deleted_flag = 'N'
+            and dept_id = #{id}
+        </where>
+    </select>
+
+    <select id="selectAuthAllChildren" parameterType="String" resultMap="SystemDeptRelationResult">
+        <include refid="selectSystemDeptRelationVo"/>
+        <where>
+            deleted_flag = 'N'
+            and parent_id = #{parentId}
+        </where>
+    </select>
+
+    <resultMap type="com.privernal.system.dto.SystemDepartmentDTO" id="SystemDepartmentResult">
+        <result property="createdBy" column="created_by"/>
+        <result property="createdTime" column="created_time"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="updatedTime" column="updated_time"/>
+        <result property="id" column="id"/>
+        <result property="remark" column="remark"/>
+        <result property="deptCode" column="dept_code"/>
+        <result property="deptName" column="dept_name"/>
+        <result property="orderNum" column="order_num"/>
+        <result property="leaderId" column="leader_id"/>
+        <result property="leaderName" column="leader_name"/>
+        <result property="status" column="status"/>
+        <result property="organizationId" column="organization_id"/>
+    </resultMap>
+
+    <select id="selectAllParentList" parameterType="String" resultMap="SystemDepartmentResult">
+        select
+            department.created_by,
+        department.created_time,
+        department.updated_by,
+        department.updated_time,
+        department.id,
+        department.remark,
+        department.dept_code,
+        department.dept_name,
+        department.order_num,
+        department.leader_id,
+        department.status,
+        department.organization_id
+
+        from system_department as department
+        left join system_dept_relation as deptRelation on deptRelation.parent_id = department.id
+        <where>
+            deptRelation.deleted_flag = 'N' and deptRelation.dept_id = #{id}
+        </where>
+        <!-- 工作流「逐层经理」按此顺序取前 N 级，level 是与锚点的距离（直接上级=1），不排序则取到哪几级不确定 -->
+        order by deptRelation.level asc
+    </select>
+</mapper>

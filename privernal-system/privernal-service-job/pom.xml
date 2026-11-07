@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <groupId>com.privernal</groupId>
+        <artifactId>privernal-system</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <modules>
+        <module>privernal-job-api</module>
+        <module>privernal-job-core</module>
+    </modules>
+
+    <artifactId>privernal-service-job</artifactId>
+    <packaging>pom</packaging>
+
+    <description>
+        定时任务管理模块（system-schedule），
+    </description>
+
+</project>

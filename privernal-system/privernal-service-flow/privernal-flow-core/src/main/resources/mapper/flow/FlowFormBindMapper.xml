@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.flow.mapper.FlowFormBindMapper">
+
+    <sql id="selectFlowFormBindVo">
+        select id, tenant_id, revision, created_by, created_time, updated_by, updated_time,
+               deleted_flag, deleted_by, deleted_time, department_id, organization_id, remark,
+               flow_code, flow_name, table_code, form_name
+        from flow_form_bind as flowFormBind
+    </sql>
+
+    <select id="selectFlowFormBindList" parameterType="com.privernal.flow.domain.FlowFormBind"
+            resultType="com.privernal.flow.domain.FlowFormBind">
+        <include refid="selectFlowFormBindVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="flowCode != null and flowCode != ''">and flowFormBind.flow_code = #{flowCode}</if>
+            <if test="flowName != null and flowName != ''">and flowFormBind.flow_name like concat('%', #{flowName}, '%')</if>
+            <if test="tableCode != null and tableCode != ''">and flowFormBind.table_code = #{tableCode}</if>
+            <if test="formName != null and formName != ''">and flowFormBind.form_name like concat('%', #{formName}, '%')</if>
+        </where>
+        order by flowFormBind.created_time desc
+    </select>
+
+</mapper>

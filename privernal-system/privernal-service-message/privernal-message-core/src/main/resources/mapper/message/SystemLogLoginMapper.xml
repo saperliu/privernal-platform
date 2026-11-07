@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.message.mapper.SystemLogLoginMapper">
+
+    <resultMap type="com.privernal.message.dto.SystemLogLoginDTO" id="SystemLogLoginResult">
+
+        <result property="tenantId" column="tenant_id"/>
+
+        <result property="revision" column="revision"/>
+
+        <result property="createdBy" column="created_by"/>
+
+        <result property="createdTime" column="created_time"/>
+
+        <result property="updatedBy" column="updated_by"/>
+
+        <result property="updatedTime" column="updated_time"/>
+
+        <result property="deletedBy" column="deleted_by"/>
+
+        <result property="deletedTime" column="deleted_time"/>
+
+        <result property="deletedFlag" column="deleted_flag"/>
+
+        <result property="id" column="id"/>
+
+        <result property="remark" column="remark"/>
+
+        <result property="loginName" column="login_name"/>
+
+        <result property="nickName" column="nick_name"/>
+
+        <result property="loginIp" column="login_ip"/>
+
+        <result property="loginLocation" column="login_location"/>
+
+        <result property="browser" column="browser"/>
+
+        <result property="os" column="os"/>
+
+        <result property="platform" column="platform"/>
+
+        <result property="message" column="message"/>
+
+        <result property="status" column="status"/>
+
+        <result property="departmentId" column="department_id"/>
+
+        <result property="organizationId" column="organization_id"/>
+    </resultMap>
+
+    <sql id="selectSystemLogLoginVo">
+        select systemLogLogin.tenant_id,
+               systemLogLogin.revision,
+               systemLogLogin.created_by,
+               systemLogLogin.created_time,
+               systemLogLogin.updated_by,
+               systemLogLogin.updated_time,
+               systemLogLogin.deleted_by,
+               systemLogLogin.deleted_time,
+               systemLogLogin.deleted_flag,
+               systemLogLogin.id,
+               systemLogLogin.remark,
+               systemLogLogin.login_name,
+               systemLogLogin.nick_name,
+               systemLogLogin.login_ip,
+               systemLogLogin.login_location,
+               systemLogLogin.browser,
+               systemLogLogin.os,
+               systemLogLogin.platform,
+               systemLogLogin.message,
+               systemLogLogin.status,
+               systemLogLogin.department_id,
+               systemLogLogin.organization_id
+        from system_log_login as systemLogLogin
+    </sql>
+
+    <select id="selectSystemLogLoginList" parameterType="com.privernal.message.filter.SystemLogLoginFilterDTO"
+            resultMap="SystemLogLoginResult">
+        <include refid="selectSystemLogLoginVo"/>
+        <where>
+            systemLogLogin.deleted_flag = 'N'
+            <if test="remark != null  and remark != ''">and systemLogLogin.remark = #{remark}</if>
+            <if test="loginName != null  and loginName != ''">and systemLogLogin.login_name like concat('%',
+                #{loginName}, '%')
+            </if>
+            <if test="nickName != null  and nickName != ''">and systemLogLogin.nick_name like concat('%', #{nickName},
+                '%')
+            </if>
+            <if test="loginIp != null  and loginIp != ''">and systemLogLogin.login_ip = #{loginIp}</if>
+            <if test="loginLocation != null  and loginLocation != ''">and systemLogLogin.login_location =
+                #{loginLocation}
+            </if>
+            <if test="browser != null  and browser != ''">and systemLogLogin.browser = #{browser}</if>
+            <if test="os != null  and os != ''">and systemLogLogin.os = #{os}</if>
+            <if test="platform != null  and platform != ''">and systemLogLogin.platform = #{platform}</if>
+            <if test="message != null  and message != ''">and systemLogLogin.message like concat('%', #{message}, '%')
+            </if>
+            <if test="status != null ">and systemLogLogin.status = #{status}</if>
+            <if test="departmentId != null  and departmentId != ''">and systemLogLogin.department_id = #{departmentId}
+            </if>
+            <if test="organizationId != null  and organizationId != ''">and systemLogLogin.organization_id =
+                #{organizationId}
+            </if>
+            <if test="parameters.beginDate != null and parameters.beginDate != '' and parameters.endDate != null and parameters.endDate != ''">
+                and systemLogLogin.created_time between #{parameters.beginDate} and  #{parameters.endDate}
+            </if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    systemLogLogin.remark like concat('%', #{item}, '%')
+                    or systemLogLogin.login_name like concat('%', #{item}, '%')
+                    or  systemLogLogin.login_location like concat('%', #{item}, '%')
+                    or systemLogLogin.message like concat('%', #{item}, '%')
+                    or systemLogLogin.os like concat('%', #{item}, '%')
+                    or systemLogLogin.browser like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by systemLogLogin.created_time desc
+    </select>
+
+
+</mapper>

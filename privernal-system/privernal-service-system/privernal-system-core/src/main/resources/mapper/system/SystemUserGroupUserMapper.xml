@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemUserGroupUserMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemUserGroupUser" id="SystemUserGroupUserResult">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="groupId"    column="group_id"    />
+        <result property="userId"    column="user_id"    />
+    </resultMap>
+
+    <sql id="selectSystemUserGroupUserVo">
+        select tenant_id, revision, created_by, created_time, updated_by, updated_time, deleted_by, deleted_time, deleted_flag, id, remark, group_id, user_id from system_user_group_user as userGroupUser
+    </sql>
+
+    <select id="selectSystemUserGroupUserList" parameterType="com.privernal.system.filter.SystemUserGroupUserFilterDTO" resultMap="SystemUserGroupUserResult">
+        <include refid="selectSystemUserGroupUserVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="remark != null  and remark != ''"> and remark = #{remark}</if>
+            <if test="groupId != null  and groupId != ''"> and group_id = #{groupId}</if>
+            <if test="userId != null  and userId != ''"> and user_id = #{userId}</if>
+        </where>
+    </select>
+
+    <select id="selectSystemUserGroupByUserId" parameterType="String" resultMap="SystemUserGroupUserResult">
+        <include refid="selectSystemUserGroupUserVo"/>
+        <where>
+            deleted_flag = 'N' and user_id = #{userId}
+        </where>
+    </select>
+</mapper>

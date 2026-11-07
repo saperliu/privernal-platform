@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemRoleMapper">
+
+    <resultMap type="com.privernal.system.domain.SystemRole" id="SystemRoleResult">
+        <result property="tenantId" column="tenant_id"/>
+        <result property="revision" column="revision"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdTime" column="created_time"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="updatedTime" column="updated_time"/>
+        <result property="deletedFlag" column="deleted_flag"/>
+        <result property="deletedBy" column="deleted_by"/>
+        <result property="deletedTime" column="deleted_time"/>
+        <result property="id" column="id"/>
+        <result property="remark" column="remark"/>
+        <result property="dataScope" column="data_scope"/>
+        <result property="roleKey" column="role_key"/>
+        <result property="status" column="status"/>
+        <result property="orderNum" column="order_num"/>
+        <result property="roleName" column="role_name"/>
+        <result property="systemType" column="system_type"/>
+        <result property="organizationId" column="organization_id"/>
+        <result property="classificationId" column="classification_id"/>
+        <result property="departmentId" column="department_id"/>
+    </resultMap>
+
+    <sql id="selectSystemRoleVo">
+        select tenant_id,
+               revision,
+               created_by,
+               created_time,
+               updated_by,
+               updated_time,
+               deleted_flag,
+               deleted_by,
+               deleted_time,
+               id,
+               remark,
+               data_scope,
+               role_key,
+               status,
+               order_num,
+               role_name,
+               system_type,
+               organization_id,
+               classification_id,
+               department_id
+        from system_role as role
+    </sql>
+
+    <select id="selectSystemRoleList" parameterType="com.privernal.system.filter.SystemRoleFilterDTO"
+            resultMap="SystemRoleResult">
+        <include refid="selectSystemRoleVo"/>
+        <where>
+            deleted_flag = 'N'
+            <if test="remark != null  and remark != ''">and remark = #{remark}</if>
+            <if test="dataScope != null ">and data_scope = #{dataScope}</if>
+            <if test="roleKey != null  and roleKey != ''">and role_key = #{roleKey}</if>
+            <if test="status != null ">and status = #{status}</if>
+            <if test="orderNum != null ">and order_num = #{orderNum}</if>
+            <if test="roleName != null  and roleName != ''">and role_name like concat('%', #{roleName}, '%')</if>
+            <if test="systemType != null  and systemType != ''">and system_type = #{systemType}</if>
+            <if test="organizationId != null  and organizationId != ''">and organization_id = #{organizationId}</if>
+            <if test="classificationId != null  and classificationId != ''">and classification_id =#{classificationId}</if>
+            <if test="departmentId != null  and departmentId != ''">and department_id = #{departmentId}</if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    role.role_name like concat('%', #{item}, '%')
+                    or role.remark like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by role.created_time desc
+    </select>
+
+    <resultMap type="com.privernal.system.dto.SystemRoleDTO" id="SystemRoleResultDTO">
+        <result property="tenantId" column="tenant_id"/>
+        <result property="revision" column="revision"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdTime" column="created_time"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="updatedTime" column="updated_time"/>
+        <result property="deletedFlag" column="deleted_flag"/>
+        <result property="deletedBy" column="deleted_by"/>
+        <result property="deletedTime" column="deleted_time"/>
+        <result property="id" column="id"/>
+        <result property="remark" column="remark"/>
+        <result property="dataScope" column="data_scope"/>
+        <result property="roleKey" column="role_key"/>
+        <result property="status" column="status"/>
+        <result property="orderNum" column="order_num"/>
+        <result property="roleName" column="role_name"/>
+        <result property="systemType" column="system_type"/>
+        <result property="organizationId" column="organization_id"/>
+        <result property="classificationId" column="classification_id"/>
+        <result property="departmentId" column="department_id"/>
+        <result property="deptName" column="dept_name"/>
+    </resultMap>
+
+    <select id="selectSystemRoleDTOList" parameterType="com.privernal.system.filter.SystemRoleFilterDTO"
+            resultMap="SystemRoleResultDTO">
+        select
+        role.tenant_id,
+        role.revision,
+        role.created_by,
+        role.created_time,
+        role.updated_by,
+        role.updated_time,
+        role.id,
+        role.remark,
+        role.data_scope,
+        role.role_key,
+        role.status,
+        role.order_num,
+        role.role_name,
+        role.system_type,
+        role.organization_id,
+        role.classification_id,
+        role.department_id,
+        dept.dept_name
+        from system_role as role
+        left join system_department dept on dept.id = role.department_id
+        <where>
+            role.deleted_flag = 'N'
+            <if test="remark != null  and remark != ''">and role.remark = #{remark}</if>
+            <if test="dataScope != null ">and role.data_scope = #{dataScope}</if>
+            <if test="roleKey != null  and roleKey != ''">and role.role_key = #{roleKey}</if>
+            <if test="status != null ">and role.status = #{status}</if>
+            <if test="orderNum != null ">and role.order_num = #{orderNum}</if>
+            <if test="roleName != null  and roleName != ''">and role.role_name like concat('%', #{roleName}, '%')</if>
+            <if test="systemType != null  and systemType != ''">and role.system_type = #{systemType}</if>
+            <if test="organizationId != null  and organizationId != ''">and role.organization_id = #{organizationId}</if>
+            <if test="classificationId != null  and classificationId != ''">and role.classification_id =#{classificationId}</if>
+            <if test="departmentId != null  and departmentId != ''">and role.department_id = #{departmentId}</if>
+
+        </where>
+    </select>
+
+    <select id="selectAuthRolePermissionByUserId" parameterType="String" resultMap="SystemRoleResult">
+        select role.tenant_id,
+               role.revision,
+               role.created_by,
+               role.created_time,
+               role.updated_by,
+               role.updated_time,
+               role.deleted_flag,
+               role.deleted_by,
+               role.deleted_time,
+               role.id,
+               role.remark,
+               role.data_scope,
+               role.role_key,
+               role.status,
+               role.order_num,
+               role.role_name,
+               role.system_type,
+               role.organization_id,
+               role.classification_id,
+               role.department_id
+        from system_role as role
+                 left join system_role_user ru on ru.role_id = role.id and ru.deleted_flag = 'N'
+        WHERE role.deleted_flag = 'N'
+          and role.status = 1
+          and ru.user_id = #{userId}
+    </select>
+
+
+    <resultMap type="com.privernal.system.dto.SystemRoleDataScopeDTO" id="SystemRoleDataScopeDTO">
+        <result property="tenantId" column="tenant_id"/>
+        <result property="revision" column="revision"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdTime" column="created_time"/>
+        <result property="updatedBy" column="updated_by"/>
+        <result property="updatedTime" column="updated_time"/>
+        <result property="deletedFlag" column="deleted_flag"/>
+        <result property="deletedBy" column="deleted_by"/>
+        <result property="deletedTime" column="deleted_time"/>
+        <result property="roleId" column="id"/>
+        <result property="remark" column="remark"/>
+        <result property="dataScope" column="data_scope"/>
+        <result property="permission" column="permission"/>
+        <result property="userId" column="user_id"/>
+        <result property="organizationId" column="organization_id"/>
+        <result property="departmentId" column="department_id"/>
+        <result property="appId" column="app_id"/>
+    </resultMap>
+    <select id="selectRoleDeptScope" parameterType="String" resultMap="SystemRoleDataScopeDTO">
+        select distinct rolem.permission,
+                        rolem.data_scope,
+                        role.organization_id,
+                        rolem.app_id,
+                        rudept.department_id
+
+        from  system_role role
+                left JOIN system_role_user ru on role.id = ru.role_id and ru.deleted_flag = 'N'
+                 left JOIN system_role_menu rolem on ru.role_id = rolem.role_id and rolem.deleted_flag = 'N'
+                 LEFT JOIN system_role_user_dept rudept on ru.id = rudept.role_user_id and rudept.deleted_flag = 'N'
+        WHERE role.deleted_flag = 'N'
+          and role.status = 1
+          and ru.user_id = #{userId}
+          and role.organization_id = #{organizationId}
+    </select>
+
+    <resultMap type="com.privernal.system.dto.SystemRoleUserDTO" id="SystemRoleUserDTO">
+        <result property="tenantId"    column="tenant_id"    />
+        <result property="revision"    column="revision"    />
+        <result property="createdBy"    column="created_by"    />
+        <result property="createdTime"    column="created_time"    />
+        <result property="updatedBy"    column="updated_by"    />
+        <result property="updatedTime"    column="updated_time"    />
+        <result property="deletedFlag"    column="deleted_flag"    />
+        <result property="deletedBy"    column="deleted_by"    />
+        <result property="deletedTime"    column="deleted_time"    />
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="roleId"    column="role_id"    />
+        <result property="userId"    column="user_id"    />
+        <result property="loginName"    column="login_name"    />
+        <result property="nickName"    column="nick_name"    />
+        <result property="email"    column="email"    />
+        <result property="phone"    column="phone"    />
+        <result property="status"    column="status"    />
+        <result property="departmentName" column="deptName"/>
+    </resultMap>
+
+    <select id="selectSystemUserByRoleList" parameterType="String" resultMap="SystemRoleUserDTO">
+        select roleUser.created_by, roleUser.created_time, roleUser.updated_by, roleUser.updated_time, roleUser.id, roleUser.user_id, roleUser.role_id,
+        user1.remark, user1.login_name, user1.status,
+        user1.nick_name, user1.email, user1.phone, dept.dept_name as deptName
+        from system_role_user as roleUser
+        left join system_user_base as user1 on roleUser.user_id = user1.id
+        left join system_department as dept on user1.department_id = dept.id
+        where roleUser.role_id = #{roleId} and user1.deleted_flag = 'N' and roleUser.deleted_flag = 'N'
+        <if test="nickName != null  and nickName != ''"> and user1.nick_name like concat('%', #{nickName}, '%')</if>
+    </select>
+
+
+    <resultMap type="com.privernal.system.dto.SystemRoleMenuDTO" id="SystemRoleMenuDTO">
+        <result property="id"    column="id"    />
+        <result property="remark"    column="remark"    />
+        <result property="roleId"    column="role_id"    />
+        <result property="menuId"    column="menu_id"    />
+        <result property="menuName"    column="menu_name"    />
+        <result property="permission"    column="permission"    />
+        <result property="dataScope"    column="data_scope"    />
+        <result property="appId"    column="app_id"    />
+    </resultMap>
+    <select id="selectSystemMenuByRoleList" parameterType="String" resultMap="SystemRoleMenuDTO">
+        select roleMenu.id, menu.menu_name, roleMenu.role_id, roleMenu.menu_id, roleMenu.permission, roleMenu.data_scope
+        from system_role_menu as roleMenu
+        left join  system_menu as menu on menu.id = roleMenu.menu_id
+        where roleMenu.role_id = #{roleId} and roleMenu.deleted_flag = 'N' and menu.deleted_flag = 'N'
+    </select>
+
+    <select id="selectSystemMenuByRoleAndAppList" parameterType="String" resultMap="SystemRoleMenuDTO">
+        select roleMenu.id, menu.menu_name, roleMenu.role_id, roleMenu.menu_id, roleMenu.permission, roleMenu.data_scope, roleMenu.app_id
+        from system_role_menu as roleMenu
+                 left join  system_menu as menu on menu.id = roleMenu.menu_id
+        where roleMenu.role_id = #{roleId} and roleMenu.app_id = #{appId} and roleMenu.deleted_flag = 'N' and menu.deleted_flag = 'N'
+    </select>
+</mapper>

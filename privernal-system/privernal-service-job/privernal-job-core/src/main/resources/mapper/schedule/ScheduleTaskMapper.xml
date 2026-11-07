@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.job.mapper.ScheduleTaskMapper">
+
+    <select id="selectScheduleTaskList" resultType="com.privernal.job.domain.SystemScheduleTask">
+        SELECT t.*
+        FROM system_schedule_task t
+        <where>
+            t.deleted_flag = 'N'
+            <if test="filter.organizationId != null and filter.organizationId != ''">
+                AND t.organization_id = #{filter.organizationId}
+            </if>
+            <if test="filter.appId != null and filter.appId != ''">
+                AND t.app_id = #{filter.appId}
+            </if>
+            <if test="filter.source != null and filter.source != ''">
+                AND t.source = #{filter.source}
+            </if>
+            <if test="filter.triggerType != null and filter.triggerType != ''">
+                AND t.trigger_type = #{filter.triggerType}
+            </if>
+            <if test="filter.status != null and filter.status != ''">
+                AND t.status = #{filter.status}
+            </if>
+            <if test="filter.actionType != null and filter.actionType != ''">
+                AND t.action_type = #{filter.actionType}
+            </if>
+            <if test="filter.createdBy != null and filter.createdBy != ''">
+                AND t.created_by = #{filter.createdBy}
+            </if>
+            <if test="filter.keyword != null and filter.keyword != ''">
+                <!-- CONCAT 在 MySQL 与 SQLite(3.44+) 均可用；勿改用 ||（MySQL 默认按逻辑 OR 解析） -->
+                AND (t.title LIKE CONCAT('%', #{filter.keyword}, '%')
+                  OR t.task_code LIKE CONCAT('%', #{filter.keyword}, '%')
+                  OR t.biz_key LIKE CONCAT('%', #{filter.keyword}, '%'))
+            </if>
+        </where>
+        ORDER BY t.created_time DESC
+    </select>
+
+</mapper>

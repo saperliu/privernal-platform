@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemAppInfoMapper">
+
+    <resultMap type="com.privernal.system.dto.SystemAppInfoDTO" id="SystemAppInfoResult">
+
+        <result property="id" column="id"/>
+
+        <result property="appKey" column="app_key"/>
+
+        <result property="appSecret" column="app_secret"/>
+
+        <result property="icon" column="icon"/>
+
+        <result property="appName" column="app_name"/>
+
+        <result property="code" column="code"/>
+
+        <result property="type" column="type"/>
+
+        <result property="userId" column="user_id"/>
+
+        <result property="status" column="status"/>
+
+        <result property="remark" column="remark"/>
+
+        <result property="tenantId" column="tenant_id"/>
+
+        <result property="revision" column="revision"/>
+
+        <result property="createdBy" column="created_by"/>
+
+        <result property="createdTime" column="created_time"/>
+
+        <result property="updatedBy" column="updated_by"/>
+
+        <result property="updatedTime" column="updated_time"/>
+
+        <result property="deletedFlag" column="deleted_flag"/>
+
+        <result property="deletedBy" column="deleted_by"/>
+
+        <result property="deletedTime" column="deleted_time"/>
+
+        <result property="organizationId" column="organization_id"/>
+        <result property="appPath" column="app_path"/>
+        <result property="pcPath" column="pc_path"/>
+        <result property="sort" column="sort"/>
+    </resultMap>
+
+    <sql id="selectSystemAppInfoVo">
+        select appInfo.id,
+               appInfo.app_key,
+               appInfo.app_secret,
+               appInfo.icon,
+               appInfo.app_name,
+               appInfo.code,
+               appInfo.type,
+               appInfo.user_id,
+               appInfo.status,
+               appInfo.remark,
+               appInfo.tenant_id,
+               appInfo.revision,
+               appInfo.created_by,
+               appInfo.created_time,
+               appInfo.updated_by,
+               appInfo.updated_time,
+               appInfo.deleted_flag,
+               appInfo.deleted_by,
+               appInfo.deleted_time,
+               appInfo.app_path,
+               appInfo.sort,
+               appInfo.pc_path,
+               appInfo.organization_id
+        from system_app_info as appInfo
+    </sql>
+
+    <select id="selectSystemAppInfoList" parameterType="com.privernal.system.filter.SystemAppInfoFilterDTO"
+            resultMap="SystemAppInfoResult">
+        <include refid="selectSystemAppInfoVo"/>
+        <where>
+            appInfo.deleted_flag = 'N'
+            <if test="appKey != null  and appKey != ''">and appInfo.app_key = #{appKey}</if>
+            <if test="appSecret != null  and appSecret != ''">and appInfo.app_secret = #{appSecret}</if>
+            <if test="appName != null  and appName != ''">and appInfo.app_name like concat('%', #{appName}, '%')</if>
+            <if test="code != null  and code != ''">and appInfo.code = #{code}</if>
+            <if test="type != null  and type != ''">and appInfo.type = #{type}</if>
+            <if test="userId != null  and userId != ''">and appInfo.user_id = #{userId}</if>
+            <if test="status != null ">and appInfo.status = #{status}</if>
+            <if test="remark != null  and remark != ''">and appInfo.remark like concat('%', #{remark}, '%')</if>
+            <if test="organizationId != null  and organizationId != ''">and appInfo.organization_id =
+                #{organizationId}
+            </if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    appInfo.remark like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by appInfo.sort desc
+    </select>
+
+    <select id="selectSystemAppInfoListByOrganizationId" parameterType="String"
+            resultMap="SystemAppInfoResult">
+        select appInfo.id,
+        appInfo.app_key,
+        appInfo.app_secret,
+        appInfo.icon,
+        appInfo.app_name,
+        appInfo.code,
+        appInfo.type,
+        appInfo.user_id,
+        appInfo.status,
+        appInfo.remark,
+        appInfo.sort,
+        appInfo.app_path,
+        appInfo.pc_path,
+        appInfo.organization_id
+        from system_app_info as appInfo
+        left join system_organization_app as organization on appInfo.id = organization.app_id
+        <where>
+            <!-- 企业应用列表=授权给该组织的全部应用：不再限定 type='SYSTEM'，
+                 否则业务应用（type 为空/自定义，见 selectCustomAppNumByOrganizationId 的统计口径）
+                 永远查不到，企业授权列表无法授权、无法编辑 -->
+            appInfo.deleted_flag = 'N' and appInfo.status = 1
+            and organization.deleted_flag = 'N' and  organization.status = 1
+            and organization.organization_id = #{organizationId}
+        </where>
+        order by appInfo.sort desc
+    </select>
+
+    <select id="selectSystemAppInfoListByOrganizationIdAndUserId" parameterType="String"
+            resultMap="SystemAppInfoResult">
+        select
+        DISTINCT
+        appInfo.id,
+        appInfo.app_key,
+        appInfo.app_secret,
+        appInfo.icon,
+        appInfo.app_name,
+        appInfo.code,
+        appInfo.type,
+        appInfo.user_id,
+        appInfo.status,
+        appInfo.remark,
+        appInfo.sort,
+        appInfo.app_path,
+        appInfo.pc_path,
+        appInfo.organization_id
+        from system_app_info as appInfo
+        left join system_organization_app as organization on appInfo.id = organization.app_id
+        left join system_role_menu as role on appInfo.id = role.app_id
+        left join system_role_user as ruser on ruser.role_id = role.role_id
+        left join system_role as role1 on role1.id = role.role_id
+        <where>
+            <!-- 同上：企业内用户可见应用不再限定 type='SYSTEM'（业务应用同样可见） -->
+            appInfo.deleted_flag = 'N' and appInfo.status = 1
+            and role1.deleted_flag = 'N' and  role1.status = 1
+            and role.deleted_flag = 'N'
+            and ruser.deleted_flag = 'N' and  role1.status = 1
+            and organization.deleted_flag = 'N' and  organization.status = 1
+            and ruser.user_id =  #{userId} and organization.organization_id = #{organizationId}
+        </where>
+        order by appInfo.sort desc
+    </select>
+
+    <!-- 统计组织内非系统应用数量（type != 'SYSTEM'：个人/业务创建的应用；含未启用的，删除的不计） -->
+    <select id="selectCustomAppNumByOrganizationId" parameterType="String" resultType="java.lang.Long">
+        select count(1)
+        from system_app_info as appInfo
+        where appInfo.deleted_flag = 'N'
+          and appInfo.organization_id = #{organizationId}
+          and (appInfo.type is null or appInfo.type != 'SYSTEM')
+    </select>
+</mapper>
