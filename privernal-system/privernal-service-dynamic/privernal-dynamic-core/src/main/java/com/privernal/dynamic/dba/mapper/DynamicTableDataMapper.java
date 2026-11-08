@@ -82,6 +82,26 @@ public interface DynamicTableDataMapper extends DataScopeMapper {
     void deleteByIds(@Param("tableName") String tableName, @Param("list") List<String> list,
                      @Param("deletedBy") String deletedBy);
 
+    /** 回收站还原：软删行回活跃态（deleted_time 回哨兵默认） */
+    void restoreById(@Param("tableName") String tableName, @Param("id") String id);
+
+    /** 回收站彻底删除：物理清除已软删行 */
+    void purgeById(@Param("tableName") String tableName, @Param("id") String id);
+
+    /** 回收站分页：软删行按删除时间倒序 */
+    List<Map<String, Object>> selectRecycleBin(@Param("tableName") String tableName,
+                                               @Param("startRow") long startRow,
+                                               @Param("pageSize") long pageSize);
+
+    /** 回收站计数 */
+    int countRecycleBin(@Param("tableName") String tableName);
+
+    /** 数值列合计（sumColumns 由服务端按列元数据筛出，条件与分页查询一致） */
+    Map<String, Object> selectSums(@Param("tableName") String tableName,
+                                   @Param("tableMap") Map<String, Object> tableMap,
+                                   @Param("condParams") Map<String, Object> condParams,
+                                   @Param("sumColumns") List<String> sumColumns);
+
     /**
      * 根据 ID 查询单条数据
      *

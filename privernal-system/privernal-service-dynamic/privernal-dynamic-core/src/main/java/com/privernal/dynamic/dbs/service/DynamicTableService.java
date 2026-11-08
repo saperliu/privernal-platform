@@ -57,6 +57,39 @@ public interface DynamicTableService {
     public void deleteByIds(String database, String tableName, List<String> data);
 
     /**
+     * 回收站还原：软删行回活跃态（deleted_time 回哨兵默认；同业务唯一值与现有活跃行冲突时报错）
+     */
+    public void restoreById(String database, String tableName, String id);
+
+    /**
+     * 回收站彻底删除：物理清除已软删行（不可逆）
+     */
+    public void purgeById(String database, String tableName, String id);
+
+    /**
+     * 回收站批量还原
+     */
+    public void restoreByIds(String database, String tableName, List<String> ids);
+
+    /**
+     * 回收站批量彻底删除
+     */
+    public void purgeByIds(String database, String tableName, List<String> ids);
+
+    /**
+     * 回收站分页列表（deleted_flag='Y' 的软删行，按删除时间倒序）
+     */
+    public PageResultInfo recycleBin(String database, String tableName, long pageNum, long pageSize);
+
+    /**
+     * 数值列合计：条件口径与分页查询一致（调用方传入原始条件快照，本方法自行做安全转换）
+     *
+     * @param sumColumns 参与合计的数值列（服务端按列元数据筛出）
+     * @return 列编码→合计值
+     */
+    public Map<String, Object> sums(String database, String tableName, Map<String, Object> data, List<String> sumColumns);
+
+    /**
      * 根据输入的键值数据，查询分页
      *
      * @param tableName 表名

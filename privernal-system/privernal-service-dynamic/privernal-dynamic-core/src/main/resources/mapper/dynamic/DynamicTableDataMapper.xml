@@ -99,6 +99,29 @@
         </foreach>
     </update>
 
+    <!-- 回收站还原：deleted_time 回哨兵默认（保持 (业务列, deleted_time) 判重口径，同值冲突由唯一索引报错） -->
+    <update id="restoreById">
+        update `${tableName}`
+        set deleted_flag = 'N', deleted_time = '1970-01-01 00:00:00.000', deleted_by = null
+        where id = #{id} and deleted_flag = 'Y'
+    </update>
+
+    <!-- 回收站彻底删除：只清已软删行 -->
+    <delete id="purgeById">
+        delete from `${tableName}` where id = #{id} and deleted_flag = 'Y'
+    </delete>
+
+    <!-- 回收站分页：软删行按删除时间倒序 -->
+    <select id="selectRecycleBin" parameterType="java.util.Map" resultType="java.util.HashMap">
+        select * from `${tableName}` where deleted_flag = 'Y'
+        order by deleted_time desc
+        limit #{startRow}, #{pageSize}
+    </select>
+
+    <select id="countRecycleBin" parameterType="java.util.Map" resultType="int">
+        select count(*) from `${tableName}` where deleted_flag = 'Y'
+    </select>
+
     <!-- 根据id查询所有数据 -->
     <select id="selectById" resultType="java.util.HashMap">
         select *
@@ -143,6 +166,25 @@
                 where 1=1 and deleted_flag = 'N'
                 <foreach collection="value" index="field" item="fieldValue">
 
+                    <if test="fieldValue != null and fieldValue!='' and field!='pageNum' and field!='pageSize' ">
+                        AND ${fieldValue}
+                    </if>
+                </foreach>
+            </if>
+        </foreach>
+    </select>
+
+    <!-- 数值列合计：sumColumns 为服务端按列元数据筛出的数值列（列名带反引号），条件与分页查询完全一致 -->
+    <select id="selectSums" parameterType="java.util.Map" resultType="java.util.HashMap">
+        <foreach collection="tableMap" index="key" item="value">
+            <if test="key != 'pageNum' and key != 'pageSize' and key != 'orderBys' and key != 'condParams'">
+                select
+                <foreach collection="sumColumns" item="col" separator=",">
+                    sum(`${col}`) as `${col}`
+                </foreach>
+                from `${key}`
+                where 1=1 and deleted_flag = 'N'
+                <foreach collection="value" index="field" item="fieldValue">
                     <if test="fieldValue != null and fieldValue!='' and field!='pageNum' and field!='pageSize' ">
                         AND ${fieldValue}
                     </if>

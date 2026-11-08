@@ -1078,7 +1078,7 @@ public class FormTransferTable {
      *
      * @return 类型映射器实例
      */
-    private static DatabaseTypeMapper getTypeMapper() {
+    public static DatabaseTypeMapper getTypeMapper() {
         DatabaseTypeMapper mapper = DynamicTypeContext.getTypeMapper();
         if (mapper == null) {
             log.warn("DynamicTypeContext 未初始化，回退到 MySQLTypeMapper");

@@ -20,6 +20,7 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 数据查询的分页
@@ -40,5 +41,7 @@ public class PageResultInfo implements Serializable {
     private List<Object> list;
     private boolean isFirstPage = false;
     private boolean isLastPage = false;
+    /** 数值列合计（列编码→合计值；仅含本轮条件命中的数值列，非数值列不出现在 Map 里） */
+    private Map<String, Object> sums;
 
 }

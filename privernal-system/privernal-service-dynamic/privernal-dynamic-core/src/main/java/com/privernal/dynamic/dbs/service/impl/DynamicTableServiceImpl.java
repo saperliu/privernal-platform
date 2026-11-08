@@ -516,6 +516,111 @@ public class DynamicTableServiceImpl implements DynamicTableService {
     }
 
     /**
+     * 回收站还原：软删行回活跃态。子表行在删除级联时已物理清除，还原不带子表数据；
+     * 同业务唯一值与现有活跃行冲突时由唯一索引报错，操作者调整后重试
+     */
+    @Override
+    @DS("#database")
+    @Transactional(readOnly = false, propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public void restoreById(String database, String tableName, String id) {
+        Assert.hasLength(tableName, "tableName must not be empty");
+        Assert.hasLength(id, "id must not be empty");
+        assertValidIdentifier(tableName);
+        dynamicTableDataMapper.restoreById(tableName, id);
+    }
+
+    /**
+     * 回收站彻底删除：物理清除已软删行（不可逆），并取消其遗留的到期任务
+     */
+    @Override
+    @DS("#database")
+    @Transactional(readOnly = false, propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public void purgeById(String database, String tableName, String id) {
+        Assert.hasLength(tableName, "tableName must not be empty");
+        Assert.hasLength(id, "id must not be empty");
+        assertValidIdentifier(tableName);
+        dynamicTableDataMapper.purgeById(tableName, id);
+        cancelDataScheduleTasks(tableName, id);
+    }
+
+    @Override
+    @DS("#database")
+    @Transactional(readOnly = false, propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public void restoreByIds(String database, String tableName, List<String> ids) {
+        Assert.notEmpty(ids, "ids must not be empty");
+        for (String id : ids) {
+            restoreById(database, tableName, id);
+        }
+    }
+
+    @Override
+    @DS("#database")
+    @Transactional(readOnly = false, propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public void purgeByIds(String database, String tableName, List<String> ids) {
+        Assert.notEmpty(ids, "ids must not be empty");
+        for (String id : ids) {
+            purgeById(database, tableName, id);
+        }
+    }
+
+    @Override
+    @DS("#database")
+    public PageResultInfo recycleBin(String database, String tableName, long pageNum, long pageSize) {
+        Assert.hasLength(tableName, "tableName must not be empty");
+        assertValidIdentifier(tableName);
+        PageResultInfo page = new PageResultInfo();
+        int total = dynamicTableDataMapper.countRecycleBin(tableName);
+        page.setTotal(total);
+        page.setPageSize(pageSize);
+        page.setPages(pageSize == 0 ? 0 : (total + pageSize - 1) / pageSize);
+        long current = Math.max(1, Math.min(pageNum, Math.max(1, page.getPages())));
+        page.setPageNum(current);
+        if (total > 0) {
+            page.setList(new ArrayList<>(dynamicTableDataMapper.selectRecycleBin(
+                    tableName, (current - 1) * pageSize, pageSize)));
+        } else {
+            page.setList(new ArrayList<>());
+        }
+        page.setFirstPage(current == 1);
+        return page;
+    }
+
+    /**
+     * 数值列合计：条件解析与 findByPage 同口径（安全片段 + 参数化）。
+     * 调用方传入原始条件快照——findByPage 会原地改写条件值（解析成占位符片段），
+     * 不能复用其入参 Map 重跑。
+     */
+    @Override
+    @DS("#database")
+    @Transactional(readOnly = true)
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> sums(String database, String tableName, Map<String, Object> data, List<String> sumColumns) {
+        Assert.hasLength(tableName, "tableName must not be empty");
+        assertValidIdentifier(tableName);
+        if (sumColumns == null || sumColumns.isEmpty()) {
+            return Map.of();
+        }
+        data.remove(Constants.ORDER_BY);
+        LinkedHashMap<String, Object> condParams = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : data.entrySet()) {
+            if (Constants.PAGE_NUM.equals(entry.getKey()) || Constants.PAGE_SIZE.equals(entry.getKey())) {
+                continue;
+            }
+            Object value = entry.getValue();
+            if (value == null || "".equals(value) || !(value instanceof String condition)) {
+                continue;
+            }
+            Object[] parsed = SafeConditionFragment.parse(condition.trim());
+            entry.setValue(parsed[0]);
+            condParams.putAll((Map<String, Object>) parsed[1]);
+        }
+        LinkedHashMap<String, Object> tableMap = new LinkedHashMap<>();
+        tableMap.put(tableName, data);
+        Map<String, Object> sums = dynamicTableDataMapper.selectSums(tableName, tableMap, condParams, sumColumns);
+        return sums == null ? Map.of() : sums;
+    }
+
+    /**
  * 数据删除级联取消到期任务（②）：biz_key 形如
      * {@code linkdate:{tableCode}:{ruleCode}:{dataId}}（P0-2 统一由 LinkageBizKeys 构造）。
      * <p>

@@ -28,6 +28,7 @@ import com.privernal.common.security.annotation.ServiceRequest;
 import com.privernal.common.security.service.SecurityUtils;
 import com.privernal.common.web.domain.CommonResult;
 import com.privernal.dynamic.dba.constants.TableFieldConstant;
+import com.privernal.dynamic.dba.type.DatabaseTypeMapper;
 import com.privernal.dynamic.dba.utils.FormDataTitleUtils;
 import com.privernal.dynamic.dba.utils.FormTransferTable;
 import com.privernal.dynamic.dba.vo.PageResultInfo;
@@ -581,6 +582,90 @@ public class CommonController {
     }
 
     /**
+     * 回收站分页列表（软删行，按删除时间倒序）。查看回收站=删除权限持有者
+     */
+    @Operation(summary = "回收站分页列表")
+    @PostMapping("/dbs/open/dynamic/{tableName}/recycle-bin")
+    public Object recycleBin(@PathVariable("tableName") String tableName,
+                             @RequestBody Map<String, Object> data) {
+        DynamicTableAuthUtil.requirePermission(tableName, "remove");
+        String database = SecurityUtils.getDatabaseName();
+        long pageNum = data.get("pageNum") == null ? 1 : Long.parseLong(String.valueOf(data.get("pageNum")));
+        long pageSize = data.get("pageSize") == null ? 20 : Long.parseLong(String.valueOf(data.get("pageSize")));
+        return CommonResult.ok(dynamicTableService.recycleBin(database, tableName, pageNum, pageSize), "查询成功");
+    }
+
+    /**
+     * 回收站还原：软删行回活跃态。同业务唯一值与现有活跃行冲突时由唯一索引报错
+     */
+    @Operation(summary = "回收站还原")
+    @Log(title = "动态表数据", operationType = OperationType.UPDATE)
+    @PutMapping("/dbs/open/dynamic/{tableName}/{id}/restore")
+    public Object restoreTableData(@PathVariable("tableName") String tableName, @PathVariable("id") String id) {
+        DynamicTableAuthUtil.requirePermission(tableName, "remove");
+        String database = SecurityUtils.getDatabaseName();
+        dynamicTableService.restoreById(database, tableName, id);
+        return CommonResult.ok(id, "还原成功");
+    }
+
+    /**
+     * 回收站彻底删除：物理清除已软删行（不可逆）
+     */
+    @Operation(summary = "回收站彻底删除")
+    @Log(title = "动态表数据", operationType = OperationType.DELETE)
+    @DeleteMapping("/dbs/open/dynamic/{tableName}/{id}/purge")
+    public Object purgeTableData(@PathVariable("tableName") String tableName, @PathVariable("id") String id) {
+        DynamicTableAuthUtil.requirePermission(tableName, "remove");
+        String database = SecurityUtils.getDatabaseName();
+        dynamicTableService.purgeById(database, tableName, id);
+        return CommonResult.ok(id, "已彻底删除");
+    }
+
+    /**
+     * 回收站批量还原
+     */
+    @Operation(summary = "回收站批量还原")
+    @Log(title = "动态表数据", operationType = OperationType.UPDATE)
+    @PostMapping("/dbs/open/dynamic/{tableName}/batch-restore")
+    public Object batchRestoreTableData(@PathVariable("tableName") String tableName,
+                                        @RequestBody Map<String, Object> data) {
+        DynamicTableAuthUtil.requirePermission(tableName, "remove");
+        String database = SecurityUtils.getDatabaseName();
+        List<String> ids = idsFromBody(data);
+        dynamicTableService.restoreByIds(database, tableName, ids);
+        return CommonResult.ok(ids, "还原成功");
+    }
+
+    /**
+     * 回收站批量彻底删除
+     */
+    @Operation(summary = "回收站批量彻底删除")
+    @Log(title = "动态表数据", operationType = OperationType.DELETE)
+    @PostMapping("/dbs/open/dynamic/{tableName}/batch-purge")
+    public Object batchPurgeTableData(@PathVariable("tableName") String tableName,
+                                      @RequestBody Map<String, Object> data) {
+        DynamicTableAuthUtil.requirePermission(tableName, "remove");
+        String database = SecurityUtils.getDatabaseName();
+        List<String> ids = idsFromBody(data);
+        dynamicTableService.purgeByIds(database, tableName, ids);
+        return CommonResult.ok(ids, "已彻底删除");
+    }
+
+    private List<String> idsFromBody(Map<String, Object> data) {
+        Object idsObj = data == null ? null : data.get("ids");
+        if (!(idsObj instanceof List) || ((List<?>) idsObj).isEmpty()) {
+            throw new ServiceException("ids 不能为空");
+        }
+        List<String> ids = new ArrayList<>();
+        for (Object item : (List<?>) idsObj) {
+            if (item != null && !String.valueOf(item).isBlank()) {
+                ids.add(String.valueOf(item));
+            }
+        }
+        return ids;
+    }
+
+    /**
      * 动态表单查询单条数据
      *
      * @param tableName 表名
@@ -763,6 +848,8 @@ public class CommonController {
         List<DynamicFormColumnDTO> fields = dynamicFormColumnService.selectTableColumnByCode(tableCode);
         // 搜索框关键词：在列转换前取出，转成文本列的 OR 模糊匹配（此前被直接丢弃，列表搜索恒为全部数据）
         String keywordCondition = FormTransferTable.buildKeywordCondition(data.remove("keywords"), fields);
+        // 数值列合计的原始条件快照：findByPage 会原地改写条件值（解析成占位符片段），不能复用
+        Map<String, Object> sumData = new HashMap<>(data);
         // 子表行字段条件（列编码为「子表字段.行内字段」）不是主表列，先摘出来转成关联子表 EXISTS，
         // 否则按主表列名校验会直接报错
         Map<String, String> subTableConditions = takeSubTableConditions(data, database, tableCode, fields);
@@ -772,6 +859,24 @@ public class CommonController {
             data.put("keywords", keywordCondition);
         }
         PageResultInfo map = dynamicTableService.findByPage(database, tableCode, data);
+        // 数值列合计：与分页查询同条件同口径（子表行条件不参与合计）
+        List<String> sumColumns = new ArrayList<>();
+        DatabaseTypeMapper typeMapper = FormTransferTable.getTypeMapper();
+        for (DynamicFormColumnDTO field : fields) {
+            String type = field.getFiledType() == null ? "" : field.getFiledType().toLowerCase();
+            if ((type.equals(typeMapper.getDatabaseTypeName(DatabaseTypeMapper.INT).toLowerCase())
+                    || type.equals(typeMapper.getDatabaseTypeName(DatabaseTypeMapper.DECIMAL).toLowerCase()))
+                    && field.getFiledCode() != null && !field.getFiledCode().contains(".")) {
+                sumColumns.add(field.getFiledCode());
+            }
+        }
+        if (!sumColumns.isEmpty()) {
+            FormTransferTable.dataGetSQL(sumData, fields);
+            if (keywordCondition != null) {
+                sumData.put("keywords", keywordCondition);
+            }
+            map.setSums(dynamicTableService.sums(database, tableCode, sumData, sumColumns));
+        }
         normalizeTemporalValues(map);
         translateCreatorAndDept(map);
         fillSubTableColumnSummaries(map, tableCode, fields);
