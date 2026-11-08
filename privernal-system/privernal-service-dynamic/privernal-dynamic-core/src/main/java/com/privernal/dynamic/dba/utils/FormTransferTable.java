@@ -654,8 +654,11 @@ public class FormTransferTable {
         deletedTime.setFieldName("deleted_time");
         deletedTime.setFieldType(mapper.getDatabaseTypeName(DatabaseTypeMapper.DATETIME));
         deletedTime.setFieldTypeLength(mapper.getLengthCount(DatabaseTypeMapper.DATETIME));
-        deletedTime.setFieldDefaultValue(null);
-        deletedTime.setFieldIsNull(true);
+        // NOT NULL + 哨兵默认：唯一索引 (列, deleted_time) 里活跃行同值真正判重——
+        // NULL 会让 MySQL 唯一索引不判重，业务唯一只剩应用层查-插（并发可穿透）。
+        // 哨兵取纪元零点，软删行写 NOW 各不相同可与活动行共存
+        deletedTime.setFieldDefaultValue("1970-01-01 00:00:00.000");
+        deletedTime.setFieldIsNull(false);
         fieldList.add(deletedTime);
 
         CreateTableVo departmentId = new CreateTableVo();
