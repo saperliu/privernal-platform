@@ -27,6 +27,7 @@ import com.privernal.message.domain.SystemMessageUser;
 import com.privernal.message.dto.*;
 import com.privernal.message.filter.SystemMessageFilterDTO;
 import com.privernal.message.filter.SystemMessageUserFilterDTO;
+import com.privernal.message.constant.MessageConstant;
 import com.privernal.message.mapper.SystemMessageMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.privernal.message.mapper.SystemMessageUserMapper;
@@ -63,6 +64,9 @@ public class SystemMessageServiceImpl implements ISystemMessageService {
 
     @Autowired
     private RemoteUserService remoteUserService;
+
+    @Autowired
+    private com.privernal.message.socket.SocketClientService socketClientService;
 
     /**
      * 查询系统消息
@@ -316,6 +320,17 @@ public class SystemMessageServiceImpl implements ISystemMessageService {
                     userIds.add(user.getUserId());
                 });
                 sendMessageDTO.setUserList(userIds);
+                // 实时推送到在线用户 web 端（platform_message 事件）；离线用户靠站内信列表拉取。
+                // 此前只构建了推送体从未发送——站内信永远要等用户手动刷新
+                for (String userId : userIds) {
+                    try {
+                        socketClientService.getUserClient(userId)
+                                .forEach((uuid, client) -> client.sendEvent(
+                                        MessageConstant.PLATFORM_SOCKET_EVENT_NAME, sendMessageDTO));
+                    } catch (Exception e) {
+                        log.warn("站内信实时推送失败（不影响落库）userId={}: {}", userId, e.getMessage());
+                    }
+                }
             }
         } finally {
             OrganizationContextHolder.setIgnore(ignore);
