@@ -19,6 +19,7 @@ package com.privernal.dynamic.dba.utils;
 import com.privernal.common.core.utils.StringUtils;
 import com.privernal.dynamic.dba.annotation.LengthCount;
 import com.privernal.dynamic.dba.constants.Constants;
+import com.privernal.dynamic.dba.dialect.DatabaseDialect;
 import com.privernal.dynamic.dba.dialect.DynamicTypeContext;
 import com.privernal.dynamic.dba.type.DatabaseTypeMapper;
 import com.privernal.dynamic.dba.vo.CreateTableVo;
@@ -204,7 +205,82 @@ public class FormTransferTable {
         }
 
         formCommonColumn(fieldList);
+        appendCompositeUniqueColumns(data, fieldList);
         return fieldList;
+    }
+
+    /**
+     * 复合唯一组（metaData 根节点 compositeUnique: [{name, fields:[列编码]}]）→ 每组一个
+     * uni_key_{name} 生成列（成员逐个 md5 后拼接：消除 a|bc/ab|c 歧义、兼容 TEXT 成员、
+     * 定长 32 使索引长度可预算）+ (uni_key, deleted_time) 唯一索引——活跃行同组同值在
+     * 数据库层冲突，软删行 deleted_time 各异可共存。组内成员 2–7 个（utf8mb4 索引上限 255 字符），
+     * 列编码必须是本表已定义字段；生成列由数据库计算，写入路径显式提交该列会被数据库拒绝（防篡改）。
+     */
+    public static void appendCompositeUniqueColumns(Map<String, Object> data, List<CreateTableVo> fieldList) {
+        Object groupsObj = data == null ? null : data.get("compositeUnique");
+        if (!(groupsObj instanceof List) || ((List<?>) groupsObj).isEmpty()) {
+            return;
+        }
+        DatabaseDialect dialect = DynamicTypeContext.getDialect();
+        // 与影子列同一能力闸门：方言不支持生成列时静默跳过（唯一性仍由应用层查-插兜底）
+        if (dialect == null || !dialect.supportsGeneratedShadowColumn()) {
+            return;
+        }
+        Set<String> existing = new HashSet<>();
+        for (CreateTableVo vo : fieldList) {
+            existing.add(vo.getFieldName());
+        }
+        DatabaseTypeMapper mapper = getTypeMapper();
+        for (Object groupObj : (List<?>) groupsObj) {
+            if (!(groupObj instanceof Map)) {
+                continue;
+            }
+            Map<?, ?> group = (Map<?, ?>) groupObj;
+            Object nameObj = group.get("name");
+            Object fieldsObj = group.get("fields");
+            if (nameObj == null || !(fieldsObj instanceof List)) {
+                continue;
+            }
+            String name = toDbColumnName(String.valueOf(nameObj));
+            if (name == null || name.isEmpty()) {
+                continue;
+            }
+            List<String> members = new ArrayList<>();
+            for (Object code : (List<?>) fieldsObj) {
+                String column = toDbColumnName(String.valueOf(code));
+                if (column != null && !column.isEmpty() && existing.contains(column) && !members.contains(column)) {
+                    members.add(column);
+                }
+            }
+            if (members.size() < 2 || members.size() > 7) {
+                continue;
+            }
+            StringBuilder expression = new StringBuilder("concat_ws('|'");
+            for (String column : members) {
+                expression.append(", md5(`").append(column).append("`)");
+            }
+            expression.append(')');
+
+            CreateTableVo uniKey = new CreateTableVo();
+            uniKey.setFieldIsKey(false);
+            uniKey.setFieldComment(shortenUniComment(name, members));
+            uniKey.setFieldName("uni_key_" + name);
+            uniKey.setFieldType(mapper.getDatabaseTypeName(DatabaseTypeMapper.VARCHAR));
+            uniKey.setFieldTypeLength(mapper.getLengthCount(uniKey.getFieldType()));
+            uniKey.setFieldLength(255);
+            uniKey.setFieldDefaultValue(null);
+            uniKey.setFieldIsNull(false);
+            uniKey.setGeneratedExpression(expression.toString());
+            uniKey.setGeneratedStorage(dialect.requiresStoredGeneration() ? "STORED" : "VIRTUAL");
+            uniKey.setFieldUniqueName(Constants.UNI + name);
+            uniKey.setFieldUniqueValue(Arrays.asList("uni_key_" + name, "deleted_time"));
+            fieldList.add(uniKey);
+        }
+    }
+
+    private static String shortenUniComment(String name, List<String> members) {
+        String comment = "复合唯一键 " + name + "（生成列: " + String.join(",", members) + "，勿直接写入）";
+        return comment.length() > 200 ? comment.substring(0, 200) : comment;
     }
 
     /**
