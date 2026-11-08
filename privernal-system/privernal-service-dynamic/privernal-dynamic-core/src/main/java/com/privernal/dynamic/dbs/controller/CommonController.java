@@ -761,13 +761,16 @@ public class CommonController {
         }
         // 处理查询字段的类型
         List<DynamicFormColumnDTO> fields = dynamicFormColumnService.selectTableColumnByCode(tableCode);
+        // 搜索框关键词：在列转换前取出，转成文本列的 OR 模糊匹配（此前被直接丢弃，列表搜索恒为全部数据）
+        String keywordCondition = FormTransferTable.buildKeywordCondition(data.remove("keywords"), fields);
         // 子表行字段条件（列编码为「子表字段.行内字段」）不是主表列，先摘出来转成关联子表 EXISTS，
         // 否则按主表列名校验会直接报错
         Map<String, String> subTableConditions = takeSubTableConditions(data, database, tableCode, fields);
         FormTransferTable.dataGetSQL(data, fields);
         data.putAll(subTableConditions);
-
-        data.remove("keywords");
+        if (keywordCondition != null) {
+            data.put("keywords", keywordCondition);
+        }
         PageResultInfo map = dynamicTableService.findByPage(database, tableCode, data);
         normalizeTemporalValues(map);
         translateCreatorAndDept(map);

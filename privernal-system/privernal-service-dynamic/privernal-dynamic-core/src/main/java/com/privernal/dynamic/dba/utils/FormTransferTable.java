@@ -72,6 +72,9 @@ public class FormTransferTable {
         DatabaseTypeMapper mapper = getTypeMapper();
         switch (compType) {
             case "number":
+            case "input-number":
+                // 数字输入：EP 设计器的组件名是 input-number，此前落到 default 建成 TEXT，
+                // 数值列范围过滤/合计全部失效；两种名字都归 INT
                 return mapper.getDatabaseTypeName(DatabaseTypeMapper.INT);
             case "textfield":
                 return mapper.getDatabaseTypeName(DatabaseTypeMapper.VARCHAR);
@@ -104,6 +107,9 @@ public class FormTransferTable {
         DatabaseTypeMapper mapper = getTypeMapper();
         switch (compType) {
             case "number":
+            case "input-number":
+                // 数字输入：EP 设计器的组件名是 input-number，此前落到 default 建成 TEXT，
+                // 数值列范围过滤/合计全部失效；两种名字都归 INT
                 return mapper.getDatabaseTypeName(DatabaseTypeMapper.INT);
             case "decimal":
                 return mapper.getDatabaseTypeName(DatabaseTypeMapper.DECIMAL);
@@ -714,6 +720,44 @@ public class FormTransferTable {
             map.put(field.getName().toLowerCase(), lengthCount.LengthCount());
         }
         return map;
+    }
+
+    /**
+    /**
+     * 搜索框关键词 → 表单全部文本列的 OR 模糊匹配条件（整串一个词，左右 %）。
+     * 列白名单=表单列定义（子表行列与非文本列不参与），值经 escapeLiteral 防注入；
+     * 返回 null=无关键词或表单没有文本列。
+     */
+    public static String buildKeywordCondition(Object keywordObj, List<DynamicFormColumnDTO> fields) {
+        if (keywordObj == null) {
+            return null;
+        }
+        String keyword = String.valueOf(keywordObj).trim();
+        if (keyword.isEmpty() || fields == null || fields.isEmpty()) {
+            return null;
+        }
+        DatabaseTypeMapper mapper = getTypeMapper();
+        String varcharName = mapper.getDatabaseTypeName(DatabaseTypeMapper.VARCHAR).toLowerCase();
+        StringBuilder sql = new StringBuilder("(");
+        for (DynamicFormColumnDTO field : fields) {
+            if (field.getFiledCode() == null || field.getFiledCode().contains(".")) {
+                // 子表行列不是主表物理列
+                continue;
+            }
+            String fieldType = field.getFiledType() == null ? "" : field.getFiledType().toLowerCase();
+            boolean charType = fieldType.equals(varcharName)
+                    || fieldType.equals(mapper.getDatabaseTypeName(DatabaseTypeMapper.TEXT).toLowerCase())
+                    || fieldType.equals(mapper.getDatabaseTypeName(DatabaseTypeMapper.MEDIUMTEXT).toLowerCase())
+                    || fieldType.equals(mapper.getDatabaseTypeName(DatabaseTypeMapper.LONGTEXT).toLowerCase());
+            if (!charType) {
+                continue;
+            }
+            if (sql.length() > 1) {
+                sql.append(" OR ");
+            }
+            sql.append('`').append(field.getFiledCode()).append("` LIKE '%").append(escapeLiteral(keyword)).append("%'");
+        }
+        return sql.length() > 1 ? sql.append(')').toString() : null;
     }
 
     /**

@@ -849,14 +849,20 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
         } catch (Exception e) {
             log.error("超时任务扫描异常（节点配置）", e);
         }
-        // 2. 未配置超时的节点沿用默认 48 小时自动通过（历史兜底行为）
+        // 2. 兜底扫描只接"配置了超时但漏注册"的待办；未配置超时的节点不再默认 48h 自动通过——
+        //    用户无感知的"超时即同意"是合规风险，待办保持挂起，由设计器提示与节点配置引导处置
+        int unconfiguredCount = 0;
         try {
             List<FlowTask> timeoutTasks = flowQueryMapper.selectTimeoutTasks(DEFAULT_TIMEOUT_HOURS);
             if (timeoutTasks != null) {
                 for (FlowTask flowTask : timeoutTasks) {
-                    if (configuredTaskIds.contains(flowTask.getId())) {
-                        // §10.5：迁移后"有配置"不再无条件排除兜底——syncer 漏注册/注册失败时
-                        // 任务行不存在，必须继续走 48h 兜底，否则超时处置彻底消失且无告警
+                    if (!configuredTaskIds.contains(flowTask.getId())) {
+                        unconfiguredCount++;
+                        continue;
+                    }
+                    // §10.5：迁移后"有配置"不再无条件排除兜底——syncer 漏注册/注册失败时
+                    // 任务行不存在，必须继续走兜底，否则超时处置彻底消失且无告警
+                    try {
                         String bizKey = com.privernal.flow.handler.FlowTimeoutTaskSyncer.bizKey(
                                 findInstanceIdByTaskId(flowTask.getId()), flowTask.getId());
                         if (flowTimeoutTaskMapper.existsActiveTask(bizKey) > 0) {
@@ -865,8 +871,6 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
                         orphanCount++;
                         log.error("超时兜底接住漏注册待办 taskId={} bizKey={}（配置了超时但任务表无行）",
                                 flowTask.getId(), bizKey);
-                    }
-                    try {
                         Task task = FlowEngine.taskService().getById(flowTask.getId());
                         if (task == null) {
                             continue;
@@ -880,6 +884,10 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
             }
         } catch (Exception e) {
             log.error("超时任务扫描异常（默认超时）", e);
+        }
+        if (unconfiguredCount > 0) {
+            log.info("{} 条待办超过 {} 小时且节点未配置超时处置：保持挂起，不自动通过（可在设计器节点超时设置里配置）",
+                    unconfiguredCount, DEFAULT_TIMEOUT_HOURS);
         }
         log.info("超时兜底处理完成：自动通过 {} 条（含漏注册兜底 {}），自动驳回 {} 条，提醒 {} 条",
                 autoApproveCount, orphanCount, autoRejectCount, notifyCount);

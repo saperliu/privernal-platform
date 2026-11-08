@@ -95,11 +95,16 @@ public final class SafeConditionFragment {
                 throw new IllegalArgumentException("查询条件片段语法不完整");
             }
             if (!first) {
-                if (!fragment.startsWith("AND", pos)) {
-                    throw new IllegalArgumentException("条件链分隔符只支持大写 AND");
+                // AND/OR 同级左结合（现网片段都是单一比较式；带 OR 的只有搜索框整段 OR 组，不混用 AND）
+                if (fragment.startsWith("AND", pos)) {
+                    sql.append(" AND ");
+                    pos = skipSpaces(fragment, pos + "AND".length());
+                } else if (fragment.startsWith("OR", pos)) {
+                    sql.append(" OR ");
+                    pos = skipSpaces(fragment, pos + "OR".length());
+                } else {
+                    throw new IllegalArgumentException("条件链分隔符只支持大写 AND/OR");
                 }
-                sql.append(" AND ");
-                pos = skipSpaces(fragment, pos + "AND".length());
             }
             pos = parseComparison(fragment, pos, sql, params, counter);
             first = false;

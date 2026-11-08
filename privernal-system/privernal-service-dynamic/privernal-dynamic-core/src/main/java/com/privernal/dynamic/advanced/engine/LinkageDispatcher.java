@@ -17,6 +17,7 @@
 package com.privernal.dynamic.advanced.engine;
 
 import com.privernal.common.core.utils.StringUtils;
+import com.privernal.common.datascope.aspect.DataScopeHelper;
 import com.privernal.dynamic.advanced.domain.DynamicLinkageRule;
 import com.privernal.dynamic.advanced.mapper.DynamicLinkageRuleMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -229,11 +230,20 @@ public class LinkageDispatcher {
         event.setEventId(eventId);
         event.setOccurredAt(new Date());
         List<DynamicLinkageRule> rules = matchRules(event);
-        for (DynamicLinkageRule rule : rules) {
-            if (!isSyncMode(rule) || depthExceeded(rule, event)) {
-                continue;
+        // SYNC 在业务请求线程内直调：引擎按"置位不恢复"语义重申忽略标志（定时线程无会话，
+        // 丢了会被数据范围切面 WHERE 1=4 拒绝），但请求线程必须把原状态恢复回来，
+        // 否则联动跑完后本次保存的剩余操作全部失去组织过滤（越权面）。
+        Boolean prevIgnoreOrg = DataScopeHelper.getIgnoreOrganization();
+        Boolean prevIgnoreDp = DataScopeHelper.getIgnoreDataPermission();
+        try {
+            for (DynamicLinkageRule rule : rules) {
+                if (!isSyncMode(rule) || depthExceeded(rule, event)) {
+                    continue;
+                }
+                executeService.runRule(rule, event, false);
             }
-            executeService.runRule(rule, event, false);
+        } finally {
+            DataScopeHelper.mergeIgnoreStrategy(prevIgnoreOrg, prevIgnoreDp);
         }
     }
 

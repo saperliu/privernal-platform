@@ -183,6 +183,13 @@ public class WebhookDispatcher {
         int timeoutMs = subscription.getTimeoutMs() == null ? 5000 : subscription.getTimeoutMs();
         boolean trustAllSsl = subscription.getSslVerify() != null && subscription.getSslVerify() == 0;
 
+        // 进入投递先落 DELIVERING：运维分得清"在投/没投"（重试间隙是 FAILED，排队中是 PENDING）
+        LambdaUpdateWrapper<SystemWebhookEvent> delivering = new LambdaUpdateWrapper<>();
+        delivering.eq(SystemWebhookEvent::getId, event.getId());
+        delivering.set(SystemWebhookEvent::getStatus, WebhookEventService.STATUS_DELIVERING);
+        eventMapper.update(null, delivering);
+        event.setStatus(WebhookEventService.STATUS_DELIVERING);
+
         while (true) {
             AttemptResult result = attempt(trustAllSsl, subscription, event, body, secret, attempt, timeoutMs);
             if (result.success()) {
