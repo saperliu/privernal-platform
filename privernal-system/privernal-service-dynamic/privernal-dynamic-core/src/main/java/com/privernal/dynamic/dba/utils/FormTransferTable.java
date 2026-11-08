@@ -77,6 +77,9 @@ public class FormTransferTable {
                 // 数字输入：EP 设计器的组件名是 input-number，此前落到 default 建成 TEXT，
                 // 数值列范围过滤/合计全部失效；两种名字都归 INT
                 return mapper.getDatabaseTypeName(DatabaseTypeMapper.INT);
+            case "formula":
+                // 公式字段：求值结果默认按数值落库（业务公式 90% 为数值），文本公式走 props.textType 分支
+                return mapper.getDatabaseTypeName(DatabaseTypeMapper.DECIMAL);
             case "textfield":
                 return mapper.getDatabaseTypeName(DatabaseTypeMapper.VARCHAR);
             case "datetime":
@@ -112,6 +115,9 @@ public class FormTransferTable {
                 // 数字输入：EP 设计器的组件名是 input-number，此前落到 default 建成 TEXT，
                 // 数值列范围过滤/合计全部失效；两种名字都归 INT
                 return mapper.getDatabaseTypeName(DatabaseTypeMapper.INT);
+            case "formula":
+                // 公式字段：求值结果默认按数值落库（业务公式 90% 为数值），文本公式走 props.textType 分支
+                return mapper.getDatabaseTypeName(DatabaseTypeMapper.DECIMAL);
             case "decimal":
                 return mapper.getDatabaseTypeName(DatabaseTypeMapper.DECIMAL);
             case "text":
@@ -1078,6 +1084,33 @@ public class FormTransferTable {
      *
      * @return 类型映射器实例
      */
+    /**
+     * 收集表单 JSON 里的公式字段（type=formula：field=列编码、props.expression=求值表达式）。
+     * out 元素 = [列编码, 表达式]。
+     */
+    public static void collectFormulaFields(Object node, List<String[]> out) {
+        if (!(node instanceof Map)) {
+            return;
+        }
+        Map<?, ?> json = (Map<?, ?>) node;
+        if (Boolean.TRUE.equals(json.get("input")) && "formula".equals(json.get("type"))) {
+            Object propsObj = json.get("props") != null ? json.get("props") : json.get("componentProps");
+            if (propsObj instanceof Map) {
+                Object expression = ((Map<?, ?>) propsObj).get("expression");
+                Object field = json.get("field");
+                if (expression != null && !String.valueOf(expression).isEmpty() && field != null) {
+                    out.add(new String[]{String.valueOf(field), String.valueOf(expression)});
+                }
+            }
+        }
+        Object children = json.get("children");
+        if (children instanceof List) {
+            for (Object child : (List<?>) children) {
+                collectFormulaFields(child, out);
+            }
+        }
+    }
+
     public static DatabaseTypeMapper getTypeMapper() {
         DatabaseTypeMapper mapper = DynamicTypeContext.getTypeMapper();
         if (mapper == null) {

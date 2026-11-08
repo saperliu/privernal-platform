@@ -292,6 +292,8 @@ public class CommonController {
         if (StringUtils.isNotEmpty(dataTitle)) {
             data.put(TableFieldConstant.FIELD_TITLE, dataTitle);
         }
+        // 公式字段：服务端权威求值（防篡改；求值结果参与查重/校验挂点/回写全链路），渲染端仅做实时预览
+        applyFormulaFields(dynamicForm, data);
         // 「不允许重复」（输入框 props.unique）保存前查重：重复直接返回错误，不落库
         dynamicSubTableService.assertUniqueFields(database, tableName, dynamicForm.getMetaData(), data);
         // 表单保存校验挂点（独立表）：在 backScript 之前按 execution_order
@@ -342,6 +344,8 @@ public class CommonController {
         if (dynamicForm == null) {
             return CommonResult.fail("表单不存在：" + tableCode);
         }
+        // 公式字段求值与主保存口径一致（流程变量取到的是已求值结果）
+        applyFormulaFields(dynamicForm, data);
         if (dynamicForm.getIsWorkflow() == null || dynamicForm.getIsWorkflow() != 1
                 || StringUtils.isEmpty(dynamicForm.getWorkflowCode())) {
             return CommonResult.fail("表单未绑定流程，无法发起：" + tableCode);
@@ -649,6 +653,29 @@ public class CommonController {
         List<String> ids = idsFromBody(data);
         dynamicTableService.purgeByIds(database, tableName, ids);
         return CommonResult.ok(ids, "已彻底删除");
+    }
+
+    /**
+     * 公式字段服务端权威求值：按表单 JSON 收集 type=formula 的字段（props.expression），
+     * 以本行已提交字段值求值后回填 data（后续查重/校验挂点/回写全链路吃到同一结果）。
+     * 求值失败抛业务异常中止保存——公式是业务逻辑，静默吞错会把错算成对的数。
+     */
+    private void applyFormulaFields(DynamicForm dynamicForm, Map<String, Object> data) {
+        if (dynamicForm == null || dynamicForm.getMetaData() == null) {
+            return;
+        }
+        List<String[]> formulas = new ArrayList<>();
+        FormTransferTable.collectFormulaFields(dynamicForm.getMetaData(), formulas);
+        if (formulas.isEmpty()) {
+            return;
+        }
+        for (String[] formula : formulas) {
+            try {
+                data.put(formula[0], com.privernal.dynamic.dba.utils.FormulaEvaluator.eval(formula[1], data));
+            } catch (Exception e) {
+                throw new ServiceException("公式字段 [" + formula[0] + "] 求值失败：" + e.getMessage());
+            }
+        }
     }
 
     private List<String> idsFromBody(Map<String, Object> data) {
