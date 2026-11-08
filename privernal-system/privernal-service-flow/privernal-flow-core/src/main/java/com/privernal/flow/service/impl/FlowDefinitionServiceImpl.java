@@ -16,6 +16,7 @@
 
 package com.privernal.flow.service.impl;
 
+import com.alibaba.fastjson2.JSON;
 import com.privernal.common.core.exception.ServiceException;
 import com.privernal.common.core.utils.StringUtils;
 import com.privernal.common.datascope.context.OrganizationContextHolder;
@@ -224,6 +225,26 @@ public class FlowDefinitionServiceImpl implements IFlowDefinitionService {
     @DS("master")
     public String exportJson(Long id) {
         return FlowEngine.defService().exportJson(id);
+    }
+
+    @Override
+    @DS("master")
+    public Definition importJson(String defJsonStr) {
+        // 导入=导出的镜像：反解后走与设计器保存完全相同的链路（saveDef 幂等落库 + 超时任务重签）；
+        // 相同 flowCode 导入为同编码新版本，不覆盖在办实例
+        if (StringUtils.isEmpty(defJsonStr)) {
+            throw new ServiceException("流程定义 JSON 不能为空");
+        }
+        DefJson defJson;
+        try {
+            defJson = JSON.parseObject(defJsonStr, DefJson.class);
+        } catch (Exception e) {
+            throw new ServiceException("流程定义 JSON 解析失败：" + e.getMessage());
+        }
+        if (defJson == null || StringUtils.isEmpty(defJson.getFlowCode())) {
+            throw new ServiceException("流程定义 JSON 无效（缺少 flowCode）");
+        }
+        return saveDefJson(defJson);
     }
 
     @Override

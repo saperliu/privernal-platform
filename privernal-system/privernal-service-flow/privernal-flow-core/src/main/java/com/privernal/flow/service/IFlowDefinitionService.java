@@ -88,6 +88,11 @@ public interface IFlowDefinitionService {
     String exportJson(Long id);
 
     /**
+     * 导入定义 JSON（与设计器保存同链路：幂等落库 + 超时任务重签；同 flowCode 为新版本）
+     */
+    Definition importJson(String defJsonStr);
+
+    /**
      * 组织同步初始化（将平台模板的表单绑定与节点权限配置复制到目标组织，已存在则跳过）
      *
      * @param organizationId 目标组织

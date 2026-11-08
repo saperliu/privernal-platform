@@ -181,6 +181,17 @@ public class FlowDefinitionController extends BaseController {
     }
 
     /**
+     * 导入流程定义 JSON（相同 flowCode 导入为同编码新版本，不覆盖在办实例）
+     */
+    @Operation(summary = "导入流程定义JSON")
+    @PreAuthorize(hasPermi = "flow:definition:import")
+    @Log(title = "流程定义", operationType = OperationType.IMPORT)
+    @PostMapping("/import")
+    public CommonResult<Definition> importJson(@RequestBody String defJsonStr) {
+        return CommonResult.ok(flowDefinitionService.importJson(defJsonStr));
+    }
+
+    /**
      * 按编码查询流程定义
      */
     @Operation(summary = "按编码查询流程定义")
