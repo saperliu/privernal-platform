@@ -37,6 +37,8 @@ import com.privernal.flow.mapper.FlowRoleNameMapper;
 import com.privernal.flow.listener.FlowEventPublisher;
 import com.privernal.flow.service.IFlowInstanceService;
 import com.privernal.flow.service.IFlowTaskService;
+import com.privernal.flow.notice.FlowNoticeMessage;
+import com.privernal.flow.notice.FlowNoticeSender;
 import com.privernal.flow.service.IFlowUserResolveService;
 import com.privernal.flow.utils.FlowNodeExtUtil;
 import com.privernal.system.dto.SystemUserDTO;
@@ -125,6 +127,12 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
     private com.privernal.flow.handler.WorkflowTimeoutActionHandler workflowTimeoutActionHandler;
 
     @Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.privernal.flow.notice.FlowNoticeSender> noticeSenderProvider;
+
+    @Autowired
+    private cn.dev33.satoken.dao.SaTokenDao saTokenDao;
+
+    @Autowired
     private com.privernal.flow.mapper.FlowTimeoutTaskMapper flowTimeoutTaskMapper;
 
     private static final String RECONCILE_HOLDER = "daily-reconcile";
@@ -192,6 +200,55 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
         } finally {
             FlowContextHolder.clear();
         }
+    }
+
+    /**
+     * 手动催办：给任务当前办理人发催办消息（站内信落库 + 实时推送）。
+     * 发起人或审批权限持有者可催办；同任务同催办人 10 分钟限一次，防连点轰炸。
+     */
+    @Override
+    @DS("master")
+    public Map<String, Object> urge(Long taskId, String comment) {
+        Task task = FlowEngine.taskService().getById(taskId);
+        if (task == null) {
+            throw new ServiceException("任务不存在或已办结");
+        }
+        // 办理人取任务在办用户（审批/转办/委派），与待办列表的口径一致
+        List<User> todoUsers = FlowEngine.userService().listByAssociatedAndTypes(taskId,
+                org.dromara.warm.flow.core.enums.UserType.APPROVAL.getKey(),
+                org.dromara.warm.flow.core.enums.UserType.TRANSFER.getKey(),
+                org.dromara.warm.flow.core.enums.UserType.DEPUTE.getKey());
+        List<String> handlers = new ArrayList<>();
+        if (todoUsers != null) {
+            for (User user : todoUsers) {
+                if (StringUtils.isNotEmpty(user.getProcessedBy())) {
+                    handlers.add(user.getProcessedBy());
+                }
+            }
+        }
+        if (handlers.isEmpty()) {
+            throw new ServiceException("该任务当前没有办理人，无法催办");
+        }
+        String operator = SecurityUtils.getUserId();
+        String lockKey = "FLOW_URGE_" + taskId + "_" + operator;
+        if ("1".equals(saTokenDao.get(lockKey))) {
+            throw new ServiceException("该任务您刚催办过，请 10 分钟后再试");
+        }
+        saTokenDao.set(lockKey, "1", 10 * 60);
+        Instance instance = FlowEngine.insService().getById(task.getInstanceId());
+        FlowNoticeMessage notice = new FlowNoticeMessage();
+        notice.setEventType("URGE");
+        notice.setInstanceId(task.getInstanceId());
+        notice.setBusinessId(instance == null ? null : instance.getBusinessId());
+        notice.setFlowName(instance == null ? null : instance.getFlowName());
+        String flowName = instance == null || StringUtils.isEmpty(instance.getFlowName()) ? "流程" : instance.getFlowName();
+        notice.setTitle("催办提醒：" + flowName);
+        notice.setContent(StringUtils.isNotEmpty(comment) ? comment : "您的待办任务已收到催办，请尽快处理。");
+        notice.setUserIds(handlers);
+        noticeSenderProvider.getObject().send(notice);
+        Map<String, Object> result = new HashMap<>();
+        result.put("urgedUsers", handlers.size());
+        return result;
     }
 
     /**

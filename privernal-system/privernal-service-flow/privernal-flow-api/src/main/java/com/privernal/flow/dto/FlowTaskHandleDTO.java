@@ -57,4 +57,7 @@ public class FlowTaskHandleDTO implements Serializable {
 
     /** 办理人用户id（内部服务调用无登录态时必传，不传则取当前登录用户） */
     private String handler;
+
+    /** 批量审批的任务 id 集（与 taskId 二选一；逐条独立执行互不影响） */
+    private List<Long> taskIds;
 }

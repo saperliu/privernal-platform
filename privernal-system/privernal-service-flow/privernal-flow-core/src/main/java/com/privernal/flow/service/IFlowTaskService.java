@@ -57,6 +57,13 @@ public interface IFlowTaskService {
     Instance approve(FlowTaskHandleDTO handleDTO);
 
     /**
+     * 手动催办：给当前办理人发催办消息（站内信落库+实时推送）；同任务同催办人限频
+     *
+     * @return {urgedUsers: 催到的办理人数}
+     */
+    Map<String, Object> urge(Long taskId, String comment);
+
+    /**
      * 驳回（退回上一节点/发起节点/指定节点）
      */
     Instance reject(FlowTaskHandleDTO handleDTO);

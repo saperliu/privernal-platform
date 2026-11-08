@@ -42,6 +42,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -109,6 +112,54 @@ public class FlowTaskController extends BaseController {
     @PutMapping("/approve")
     public CommonResult<Instance> approve(@RequestBody FlowTaskHandleDTO handleDTO) {
         return CommonResult.ok(flowTaskService.approve(handleDTO));
+    }
+
+    /**
+     * 批量审批通过：逐条独立执行，单条失败不影响其余，结果按任务回带
+     */
+    @Operation(summary = "批量审批通过")
+    @PreAuthorize(hasPermi = "flow:task:approve")
+    @Log(title = "流程任务-批量通过", operationType = OperationType.UPDATE)
+    @PutMapping("/batch-approve")
+    public CommonResult<List<Map<String, Object>>> batchApprove(@RequestBody FlowTaskHandleDTO handleDTO) {
+        List<Map<String, Object>> results = new ArrayList<>();
+        List<Long> taskIds = handleDTO.getTaskIds();
+        if ((taskIds == null || taskIds.isEmpty()) && handleDTO.getTaskId() != null) {
+            taskIds = List.of(handleDTO.getTaskId());
+        }
+        if (taskIds == null || taskIds.isEmpty()) {
+            return CommonResult.fail("taskIds 不能为空");
+        }
+        for (Long taskId : taskIds) {
+            Map<String, Object> row = new HashMap<>();
+            row.put("taskId", taskId);
+            try {
+                FlowTaskHandleDTO one = new FlowTaskHandleDTO();
+                one.setTaskId(taskId);
+                one.setMessage(handleDTO.getMessage());
+                one.setVariable(handleDTO.getVariable());
+                flowTaskService.approve(one);
+                row.put("ok", true);
+            } catch (Exception e) {
+                row.put("ok", false);
+                row.put("message", e.getMessage());
+            }
+            results.add(row);
+        }
+        return CommonResult.ok(results);
+    }
+
+    /**
+     * 手动催办：给当前办理人发催办消息（站内信落库+实时推送），同任务同催办人 10 分钟限一次
+     */
+    @Operation(summary = "催办")
+    @PreAuthorize(hasPermi = "flow:task:approve")
+    @Log(title = "流程任务-催办", operationType = OperationType.OTHER)
+    @PostMapping("/urge/{taskId}")
+    public CommonResult<Map<String, Object>> urge(@PathVariable("taskId") Long taskId,
+                                                  @RequestBody(required = false) Map<String, Object> body) {
+        String comment = body == null || body.get("comment") == null ? "" : String.valueOf(body.get("comment"));
+        return CommonResult.ok(flowTaskService.urge(taskId, comment));
     }
 
     /**
