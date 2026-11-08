@@ -2266,7 +2266,7 @@ CREATE TABLE `system_user_base` (
   `email` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '邮箱',
   `phone` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '手机',
   `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '密码',
-  `password_v2` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'F4 封存口令摘要（AES-GCM，挑战登录用；未迁移为空）',
+  `password_v2` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '封存口令摘要（AES-GCM，挑战登录用；未迁移为空）',
   `gender` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT '2' COMMENT '性别;用户性别（0男1女 2未知）',
   `avatar` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '头像',
   `status` int NOT NULL DEFAULT '0' COMMENT '状态;取值见 UserStatus 枚举（1正常 3停用 5审核 Y删除）',
@@ -2531,7 +2531,7 @@ CREATE TABLE `system_webhook_subscription` (
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
 -- ----------------------------
--- 数据库结构变更台账（ROADMAP 1.14）：init 基线之后的增量脚本在此登记，终结升级脚本漂移。
+-- 数据库结构变更台账：init 基线之后的增量脚本在此登记，终结升级脚本漂移。
 -- 流程见 sql/README.md「迁移台账」节：apply 前先核对脚本 SHA-256，apply 后 INSERT 登记。
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS `platform_schema_history` (

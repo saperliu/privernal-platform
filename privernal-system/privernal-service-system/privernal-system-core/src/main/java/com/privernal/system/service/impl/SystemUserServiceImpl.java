@@ -457,8 +457,8 @@ public class SystemUserServiceImpl implements ISystemUserService {
         if (StringUtils.isAnyBlank(loginName, sealed)) {
             return 0;
         }
-        // F4：本写在登录进行中调用（无 token 会话），数据范围切面会因取不到会话而炸——
-        // 按 OpenApiAiBuildController 同款 set-then-restore 口径忽略数据范围（S19：必须配对恢复）
+        // 本写在登录进行中调用（无 token 会话），数据范围切面会因取不到会话而炸——
+        // 按 OpenApiAiBuildController 同款 set-then-restore 口径忽略数据范围（必须配对恢复）
         Boolean prevOrg = com.privernal.common.datascope.aspect.DataScopeHelper.getIgnoreOrganization();
         Boolean prevDp = com.privernal.common.datascope.aspect.DataScopeHelper.getIgnoreDataPermission();
         com.privernal.common.datascope.aspect.DataScopeHelper.mergeIgnoreStrategy(true, true);

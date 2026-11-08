@@ -129,7 +129,7 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * F4 口令凭证待迁移：返回专用码，客户端自动降级引导一次后重试挑战登录
+     * 口令凭证待迁移：返回专用码，客户端自动降级引导一次后重试挑战登录
      */
     @ExceptionHandler(PasswordMigrateRequiredException.class)
     public CommonResult<Object> passwordMigrateRequiredException(PasswordMigrateRequiredException e) {

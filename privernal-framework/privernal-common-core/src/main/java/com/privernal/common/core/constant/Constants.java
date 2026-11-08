@@ -127,10 +127,10 @@ public class Constants
     /** 接口限流计数键前缀（@RateLimiter / RateLimiterAspect） */
     public static final String RATE_LIMITER_PREFIX = "RATE_LIMITER:";
 
-    /** F4 登录挑战一次性 nonce 缓存键前缀（60 秒/单次，读取即作废） */
+    /** 登录挑战一次性 nonce 缓存键前缀（60 秒/单次，读取即作废） */
     public static final String PWD_CHALLENGE_PREFIX = "PWD_CHALLENGE_";
 
-    /** F4 挑战登录返回码：口令凭证待迁移（客户端自动降级引导一次后重试挑战登录） */
+    /** 挑战登录返回码：口令凭证待迁移（客户端自动降级引导一次后重试挑战登录） */
     public static final int CODE_PWD_MIGRATE_REQUIRED = 40101;
 
     /**

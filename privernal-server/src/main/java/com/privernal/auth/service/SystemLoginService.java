@@ -218,7 +218,7 @@ public class SystemLoginService {
     }
 
     /**
-     * 登录（F4 挑战-应答：nonceId 非空时走封存摘要校验，详见 PasswordDigestService）
+     * 登录（挑战-应答：nonceId 非空时走封存摘要校验，详见 PasswordDigestService）
      */
     public UserInfo login(String username, String password, String nonceId) {
 
@@ -291,7 +291,7 @@ public class SystemLoginService {
     }
 
     /**
-     * 登录（F4 挑战-应答同 login）
+     * 登录（挑战-应答同 login）
      */
     public UserInfo loginPhone(String phone, String password, String nonceId) {
 
@@ -318,7 +318,7 @@ public class SystemLoginService {
     }
 
     /**
-     * F4 挑战签发（登录前，免登）：一次性 nonce + 迁移标志。
+     * 挑战签发（登录前，免登）：一次性 nonce + 迁移标志。
      * migrated=false 时客户端会先提交一次旧摘要（服务端此时静默写入封存值），再取新 nonce 重试。
      * 查询失败一律按未迁移处理（客户端降级一次可自愈），且不区分"用户不存在"，
      * 避免 challenge 端点变成账号枚举器。
@@ -346,7 +346,7 @@ public class SystemLoginService {
     }
 
     /**
-     * F4 双口径口令校验：带 nonceId 且用户已迁移 → 挑战协议（AES 封存摘要，重放面=0）；
+     * 双口径口令校验：带 nonceId 且用户已迁移 → 挑战协议（AES 封存摘要，重放面=0）；
      * 带 nonceId 但未迁移 → 抛待迁移专用码（客户端自动降级引导一次后重试）；
      * 无 nonceId → bcrypt 旧口径，成功且挑战可用时静默迁移（写封存摘要）。
      *

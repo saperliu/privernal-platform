@@ -50,7 +50,7 @@ public class LoginDTO implements Serializable
     private String password;
 
     /**
-     * F4 挑战登录：/auth/login/challenge 下发的一次性 nonce 编号；携带时密码字段=SHA512(nonce+线摘要)
+     * 挑战登录：/auth/login/challenge 下发的一次性 nonce 编号；携带时密码字段=SHA512(nonce+线摘要)
      */
     @Schema(description = "挑战登录 nonce 编号")
     private String nonceId;

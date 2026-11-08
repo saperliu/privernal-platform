@@ -140,7 +140,7 @@ public interface ISystemUserService {
     public int resetUserPwd(String loginName, String password);
 
     /**
-     * F4：保存封存口令摘要（挑战登录用；登录引导迁移与改密双写共用）
+     * 保存封存口令摘要（挑战登录用；登录引导迁移与改密双写共用）
      *
      * @param loginName 用户名
      * @param sealed    AES-GCM 封存的线摘要

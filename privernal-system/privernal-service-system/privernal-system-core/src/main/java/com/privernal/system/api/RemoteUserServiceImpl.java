@@ -469,7 +469,7 @@ public class RemoteUserServiceImpl implements RemoteUserService {
     public CommonResult<Object> updatePassword(ResetPasswordDTO resetPasswordDTO, String request) {
         SystemUserDTO user = systemUserService.selectUserByPhone(resetPasswordDTO.getPhone());
         if (systemUserService.resetUserPwd(user.getLoginName(), SecurityUtils.encryptPassword(resetPasswordDTO.getPassword())) > 0) {
-            // F4 双写：挑战登录用的封存线摘要同步更新
+            // 双写：改密后同步更新封存线摘要
             systemUserService.savePasswordV2(user.getLoginName(), passwordDigestSealer.seal(resetPasswordDTO.getPassword()));
             return CommonResult.ok();
         }
@@ -478,7 +478,7 @@ public class RemoteUserServiceImpl implements RemoteUserService {
 
     @Override
     public CommonResult<Object> updatePasswordV2(String loginName, String sealed, String request) {
-        // F4：登录引导迁移写入封存摘要；密封值由 auth 侧主密钥生成，本服务只落库
+        // 登录引导迁移写入封存摘要；密封值由 auth 侧主密钥生成，本服务只落库
         return CommonResult.ok(systemUserService.savePasswordV2(loginName, sealed));
     }
 

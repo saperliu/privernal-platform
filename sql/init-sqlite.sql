@@ -2799,7 +2799,7 @@ CREATE TABLE IF NOT EXISTS zz_menu (
 );
 
 -- ----------------------------
--- 数据库结构变更台账（ROADMAP 1.14）：init 基线之后的增量脚本在此登记，终结升级脚本漂移。
+-- 数据库结构变更台账：init 基线之后的增量脚本在此登记，终结升级脚本漂移。
 -- 流程见 sql/README.md「迁移台账」节：apply 前先核对脚本 SHA-256，apply 后 INSERT 登记。
 -- ----------------------------
 CREATE TABLE IF NOT EXISTS platform_schema_history (

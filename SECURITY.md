@@ -29,7 +29,7 @@
    基础配置里 `application.yaml` 的 `openapi.secret-master-key` 默认**留空**：
    未用环境变量 `OPENAPI_SECRET_MASTER_KEY` 设置时，创建凭证会直接报错——
    这是刻意的 fail-closed 兜底，防止机读密钥退化成明文入库。生产环境必须显式设置。
-3. **设置口令摘要主密钥（F4 挑战登录，建议启用）。**
+3. **设置口令摘要主密钥（挑战登录，建议启用）。**
    未用环境变量 `PASSWORD_DIGEST_MASTER_KEY`（32 字节 hex 或 ≥32 字符短语）设置时，
    登录走旧口径 bcrypt 校验，线摘要仍可重放；配置后客户端自动升级为挑战-应答
    （一次性 nonce + AES-GCM 封存摘要，重放面归零），存量账号在下次登录时静默迁移。

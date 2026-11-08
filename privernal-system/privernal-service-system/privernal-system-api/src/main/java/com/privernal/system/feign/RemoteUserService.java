@@ -250,7 +250,7 @@ public interface RemoteUserService {
     public CommonResult<Object> updatePassword(@RequestBody ResetPasswordDTO resetPasswordDTO, @RequestHeader(Constants.SERVICE_REQUEST) String request);
 
     /**
-     * F4：保存封存口令摘要（旧口径登录成功后引导迁移）
+     * 保存封存口令摘要（旧口径登录成功后引导迁移）
      */
     @PutMapping("/inner/system/user/password/v2")
     public CommonResult<Object> updatePasswordV2(@RequestParam("loginName") String loginName,

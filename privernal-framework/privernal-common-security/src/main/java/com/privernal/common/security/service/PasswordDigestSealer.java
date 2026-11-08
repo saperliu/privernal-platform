@@ -21,7 +21,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
- * F4 封存器（system 模块改密写点用）：把改密/重置链路拿到的线摘要封存成库内凭证。
+ * 封存器（system 模块改密写点用）：把改密/重置链路拿到的线摘要封存成库内凭证。
  * 主密钥与 auth 侧 PasswordDigestService 同源（PASSWORD_DIGEST_MASTER_KEY），
  * AES-GCM 细节在 PasswordDigestCipher。
  *

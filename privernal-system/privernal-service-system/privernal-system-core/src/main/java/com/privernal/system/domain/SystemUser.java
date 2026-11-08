@@ -64,7 +64,7 @@ public class SystemUser extends BaseEntity {
      */
     private String password;
     /**
-     * F4 挑战-应答凭证：AES-GCM 封存的线摘要（SHA512(明文口令)），主密钥在环境变量，
+     * 挑战-应答凭证：AES-GCM 封存的线摘要（SHA512(明文口令)），主密钥在环境变量，
      * 库里不再留可重放明文摘要；挑战登录用。旧 bcrypt 列过渡期保留双写
      */
     private String passwordV2;

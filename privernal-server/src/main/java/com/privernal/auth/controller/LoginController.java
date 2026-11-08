@@ -132,10 +132,10 @@ public class LoginController {
      * @return
      */
     /**
-     * F4 挑战-应答第一步：签发一次性 nonce（免登）。主密钥未配置时返回 enabled=false，
+     * 挑战-应答第一步：签发一次性 nonce（免登）。主密钥未配置时返回 enabled=false，
      * 客户端据此回退旧口径；migrated=false 时客户端先提交一次旧摘要引导服务端封存（静默），再取新 nonce 重试。
      */
-    @Operation(summary = "登录挑战签发", description = "F4：一次性 nonce（60 秒/单次）+ 迁移标志，客户端用其绑定本次登录凭证")
+    @Operation(summary = "登录挑战签发", description = "一次性 nonce（60 秒/单次）+ 迁移标志，客户端用其绑定本次登录凭证")
     @RateLimiter(key = "auth-challenge", max = 30, period = 60)
     @GetMapping("/auth/login/challenge")
     @ResponseBody

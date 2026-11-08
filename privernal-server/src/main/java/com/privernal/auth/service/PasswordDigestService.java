@@ -35,7 +35,7 @@ import java.util.HexFormat;
 import java.util.UUID;
 
 /**
- * F4 口令摘要改造：挑战-应答协议的服务端部件。
+ * 挑战-应答口令协议的服务端部件。
  *
  * 背景（ROADMAP 1.11）：旧协议线路上传无盐 SHA512(明文口令)，摘要即等价口令、可跨部署重放。
  * 新协议：

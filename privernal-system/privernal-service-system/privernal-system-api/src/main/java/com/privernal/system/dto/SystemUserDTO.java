@@ -83,7 +83,7 @@ public class SystemUserDTO extends BaseDTO {
     private String password;
 
     /**
-     * F4 挑战登录凭证：AES-GCM 封存的线摘要（null=未迁移）
+     * 挑战登录凭证：AES-GCM 封存的线摘要（null=未迁移）
      */
     @Schema(description = "封存口令摘要")
     private String passwordV2;

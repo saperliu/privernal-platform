@@ -17,7 +17,7 @@
 package com.privernal.common.core.exception;
 
 /**
- * F4 口令凭证待迁移：客户端携 nonce 发起挑战登录但用户尚无封存摘要时抛出，
+ * 口令凭证待迁移：客户端携 nonce 发起挑战登录但用户尚无封存摘要时抛出，
  * 客户端据此自动降级一次旧口径提交（服务端随后写入封存摘要），再重试挑战登录。
  *
  * @author saperliu

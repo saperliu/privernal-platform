@@ -117,7 +117,7 @@ public class ManualUserProfileController extends BaseController {
             return CommonResult.fail("新密码不能与旧密码相同");
         }
         if (systemUserService.resetUserPwd(username, SecurityUtils.encryptPassword(resetPasswordDTO.getPassword())) > 0) {
-            // F4 双写：挑战登录用的封存线摘要同步更新（未配主密钥时 seal 返回 null，留空走引导迁移）
+            // 双写：改密后同步更新挑战登录用的封存线摘要（未配主密钥时 seal 返回 null，留空走引导迁移）
             systemUserService.savePasswordV2(username, passwordDigestSealer.seal(resetPasswordDTO.getPassword()));
             return CommonResult.ok();
         }

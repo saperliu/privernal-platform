@@ -1,4 +1,4 @@
--- V202611081900 F4 口令摘要改造：存量 SQLite 库补 password_v2 列（全新安装已含于 init-sqlite.sql）
+-- 口令摘要改造（V202611081900）：存量 SQLite 库补 password_v2 列（全新安装已含于 init-sqlite.sql）
 -- 适用：dev/local=SQLite；执行前见 sql/README.md「迁移台账」节。执行方式：
 --   sqlite3 data/privernal.db < sql/migrations/V202611081900__f4_password_digest.sqlite.sql
 -- 回滚：SQLite 3.35+ 支持 ALTER TABLE system_user_base DROP COLUMN password_v2;

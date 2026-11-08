@@ -94,7 +94,7 @@ public class UserInfo implements Serializable {
     private String password;
 
     /**
-     * F4 挑战登录凭证：AES-GCM 封存的线摘要（可为空=未迁移，走 bcrypt 引导迁移）
+     * 挑战登录凭证：AES-GCM 封存的线摘要（可为空=未迁移，走 bcrypt 引导迁移）
      */
     private String passwordV2;
 

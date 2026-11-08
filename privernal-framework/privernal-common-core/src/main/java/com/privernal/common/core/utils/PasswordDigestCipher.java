@@ -26,7 +26,7 @@ import java.util.HexFormat;
 import java.util.Base64;
 
 /**
- * F4 口令线摘要封存（静态工具）：AES-GCM(iv 前缀, "v2:" 前缀)。
+ * 口令线摘要封存（静态工具）：AES-GCM(iv 前缀, "v2:" 前缀)。
  * 主密钥来源：PASSWORD_DIGEST_MASTER_KEY（32 字节 hex 直用，否则 SHA-256 派生）。
  * auth 的 PasswordDigestService（挑战存取）与 system 的改密写点共用本工具。
  *
