@@ -817,8 +817,22 @@ public class FormTransferTable {
         if (keywordObj == null) {
             return null;
         }
-        String keyword = String.valueOf(keywordObj).trim();
-        if (keyword.isEmpty() || fields == null || fields.isEmpty()) {
+        // 前端把搜索串按空格拆成 keywords 数组上送（空搜索=空数组）；直接 String.valueOf(数组)
+        // 会得到 "[]"/"[张三]" 这类脏串拼进 LIKE，恒不命中且会触发条件校验拒绝，整页查询报错
+        List<String> keywords = new ArrayList<>();
+        if (keywordObj instanceof Collection<?>) {
+            for (Object item : (Collection<?>) keywordObj) {
+                if (item != null && !String.valueOf(item).isBlank()) {
+                    keywords.add(String.valueOf(item).trim());
+                }
+            }
+        } else {
+            String single = String.valueOf(keywordObj).trim();
+            if (!single.isEmpty()) {
+                keywords.add(single);
+            }
+        }
+        if (keywords.isEmpty() || fields == null || fields.isEmpty()) {
             return null;
         }
         DatabaseTypeMapper mapper = getTypeMapper();
@@ -837,10 +851,12 @@ public class FormTransferTable {
             if (!charType) {
                 continue;
             }
-            if (sql.length() > 1) {
-                sql.append(" OR ");
+            for (String keyword : keywords) {
+                if (sql.length() > 1) {
+                    sql.append(" OR ");
+                }
+                sql.append('`').append(field.getFiledCode()).append("` LIKE '%").append(escapeLiteral(keyword)).append("%'");
             }
-            sql.append('`').append(field.getFiledCode()).append("` LIKE '%").append(escapeLiteral(keyword)).append("%'");
         }
         return sql.length() > 1 ? sql.append(')').toString() : null;
     }

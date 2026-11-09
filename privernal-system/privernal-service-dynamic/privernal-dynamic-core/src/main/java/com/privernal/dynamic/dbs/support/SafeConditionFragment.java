@@ -118,6 +118,36 @@ public final class SafeConditionFragment {
     /** 在 pos 处解析一个比较式，返回新的 pos；解析失败抛出 IllegalArgumentException */
     private static int parseComparison(String s, int pos, StringBuilder sql,
                                        Map<String, Object> params, int[] counter) {
+        // 括号组：搜索框整段 OR 组（buildKeywordCondition）以 (col LIKE .. OR col LIKE ..) 形态进入，
+        // 内部递归走同一条比较式解析链，占位符与参数化口径不变
+        if (pos < s.length() && s.charAt(pos) == '(') {
+            sql.append('(');
+            pos = skipSpaces(s, pos + 1);
+            boolean first = true;
+            while (true) {
+                if (!first) {
+                    if (s.startsWith("AND", pos)) {
+                        sql.append(" AND ");
+                        pos = skipSpaces(s, pos + "AND".length());
+                    } else if (s.startsWith("OR", pos)) {
+                        sql.append(" OR ");
+                        pos = skipSpaces(s, pos + "OR".length());
+                    } else {
+                        throw new IllegalArgumentException("条件链分隔符只支持大写 AND/OR：" + preview(s.substring(pos)));
+                    }
+                }
+                pos = parseComparison(s, pos, sql, params, counter);
+                first = false;
+                pos = skipSpaces(s, pos);
+                if (pos < s.length() && s.charAt(pos) == ')') {
+                    sql.append(')');
+                    return pos + 1;
+                }
+                if (pos >= s.length()) {
+                    throw new IllegalArgumentException("括号组未闭合");
+                }
+            }
+        }
         Matcher columnMatcher = COLUMN.matcher(s);
         columnMatcher.region(pos, s.length());
         if (!columnMatcher.lookingAt()) {

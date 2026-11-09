@@ -63,6 +63,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -891,12 +892,18 @@ public class CommonController {
         }
         PageResultInfo map = dynamicTableService.findByPage(database, tableCode, data);
         // 数值列合计：与分页查询同条件同口径（子表行条件不参与合计）
+        // 元数据里的类型既有逻辑名（int）也有各时期落库的物理名（SQLite INTEGER/NUMERIC），
+        // 两侧都收进候选集再比对——只按物理名比对会让 SQLite 方言下合计恒为空
         List<String> sumColumns = new ArrayList<>();
         DatabaseTypeMapper typeMapper = FormTransferTable.getTypeMapper();
+        Set<String> numericTypes = new HashSet<>(Arrays.asList(
+                DatabaseTypeMapper.INT,
+                DatabaseTypeMapper.DECIMAL,
+                typeMapper.getDatabaseTypeName(DatabaseTypeMapper.INT).toLowerCase(),
+                typeMapper.getDatabaseTypeName(DatabaseTypeMapper.DECIMAL).toLowerCase()));
         for (DynamicFormColumnDTO field : fields) {
             String type = field.getFiledType() == null ? "" : field.getFiledType().toLowerCase();
-            if ((type.equals(typeMapper.getDatabaseTypeName(DatabaseTypeMapper.INT).toLowerCase())
-                    || type.equals(typeMapper.getDatabaseTypeName(DatabaseTypeMapper.DECIMAL).toLowerCase()))
+            if (numericTypes.contains(type)
                     && field.getFiledCode() != null && !field.getFiledCode().contains(".")) {
                 sumColumns.add(field.getFiledCode());
             }

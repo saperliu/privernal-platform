@@ -133,7 +133,12 @@ public class SQLiteDialect extends AbstractDatabaseDialect {
      */
     @Override
     public String buildGetTableColumnsSql(String tableName) {
+        // 消费方（增量建表 diff 的 getModifyFieldList）按 MySQL information_schema 口径同时读
+        // data_type（裸类型）与 column_type（带长度的完整类型）——SQLite pragma 只有 type 一个
+        // 列，两个别名都要给，缺哪个都 NPE。column_type 里去空格：建表模板的声明式类型是
+        // "TEXT (32)"，模型侧比对口径是 "text(32)"，不去空格会把全部字段误判为待修改。
         return "SELECT name AS column_name, upper(type) AS data_type,"
+                + " upper(replace(type, ' ', '')) AS column_type,"
                 + " CASE WHEN \"notnull\" = 1 THEN 'NO' ELSE 'YES' END AS is_nullable,"
                 + " dflt_value AS column_default,"
                 + " CASE WHEN pk = 1 THEN 'PRI' ELSE '' END AS column_key,"
