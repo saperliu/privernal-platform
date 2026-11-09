@@ -745,7 +745,7 @@ CREATE TABLE `flow_form` (
   `form_type` int DEFAULT NULL COMMENT '表单类型',
   `form_path` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '表单路径',
   `form_content` mediumtext COLLATE utf8mb4_general_ci COMMENT '表单内容',
-  `ext` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '扩展字段',
+  `ext` varchar(2000) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '扩展字段（节点/实例配置 JSON）',
   PRIMARY KEY (`id`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='流程表单表';
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -931,7 +931,7 @@ CREATE TABLE `flow_his_task` (
   `flow_status` varchar(10) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '流程状态',
   `message` varchar(500) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '审批意见',
   `variable` mediumtext COLLATE utf8mb4_general_ci COMMENT '任务变量',
-  `ext` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '扩展字段',
+  `ext` varchar(2000) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '扩展字段（节点/实例配置 JSON）',
   `form_custom` char(1) COLLATE utf8mb4_general_ci DEFAULT 'N' COMMENT '审批表单是否自定义',
   `form_path` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '审批表单路径',
   PRIMARY KEY (`id`) USING BTREE,
@@ -964,7 +964,7 @@ CREATE TABLE `flow_instance` (
   `form_custom` char(1) COLLATE utf8mb4_general_ci DEFAULT 'N' COMMENT '审批表单是否自定义',
   `form_path` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '审批表单路径',
   `def_json` mediumtext COLLATE utf8mb4_general_ci COMMENT '流程定义json',
-  `ext` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '扩展字段',
+  `ext` varchar(2000) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '扩展字段（节点/实例配置 JSON）',
   PRIMARY KEY (`id`) USING BTREE,
   KEY `idx_instance_definition_id` (`definition_id`) USING BTREE,
   KEY `idx_instance_business_id` (`business_id`) USING BTREE,
@@ -995,7 +995,7 @@ CREATE TABLE `flow_node` (
   `listener_path` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '监听器路径',
   `form_custom` char(1) COLLATE utf8mb4_general_ci DEFAULT 'N' COMMENT '审批表单是否自定义',
   `form_path` varchar(100) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '审批表单路径',
-  `ext` varchar(255) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '扩展属性',
+  `ext` varchar(2000) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT '扩展属性（节点配置 JSON：超时/消息等）',
   PRIMARY KEY (`id`) USING BTREE,
   KEY `idx_node_definition_id` (`definition_id`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='流程节点表';

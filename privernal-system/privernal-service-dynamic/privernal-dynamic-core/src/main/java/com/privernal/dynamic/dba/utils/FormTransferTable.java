@@ -1111,6 +1111,37 @@ public class FormTransferTable {
         }
     }
 
+    /**
+     * 收集子表合计配置（主表字段 props.sumFrom={child:子表字段编码, column:汇总列编码}）。
+     * out 元素 = [主表字段编码, 子表字段编码, 汇总列编码]。
+     */
+    public static void collectSumFromFields(Object node, List<String[]> out) {
+        if (!(node instanceof Map)) {
+            return;
+        }
+        Map<?, ?> json = (Map<?, ?>) node;
+        if (Boolean.TRUE.equals(json.get("input"))) {
+            Object propsObj = json.get("props") != null ? json.get("props") : json.get("componentProps");
+            if (propsObj instanceof Map) {
+                Object sumFrom = ((Map<?, ?>) propsObj).get("sumFrom");
+                Object field = json.get("field");
+                if (sumFrom instanceof Map && field != null) {
+                    Object child = ((Map<?, ?>) sumFrom).get("child");
+                    Object column = ((Map<?, ?>) sumFrom).get("column");
+                    if (child != null && column != null) {
+                        out.add(new String[]{String.valueOf(field), String.valueOf(child), String.valueOf(column)});
+                    }
+                }
+            }
+        }
+        Object children = json.get("children");
+        if (children instanceof List) {
+            for (Object child : (List<?>) children) {
+                collectSumFromFields(child, out);
+            }
+        }
+    }
+
     public static DatabaseTypeMapper getTypeMapper() {
         DatabaseTypeMapper mapper = DynamicTypeContext.getTypeMapper();
         if (mapper == null) {

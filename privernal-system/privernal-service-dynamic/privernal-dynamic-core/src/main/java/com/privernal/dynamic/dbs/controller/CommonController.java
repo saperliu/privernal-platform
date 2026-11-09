@@ -309,6 +309,10 @@ public class CommonController {
         // 整体重建（先删旧行再插当前行），与前端行的增删改交互对齐
         if (result instanceof Map) {
             saveSubTableRows(database, subTableDefs, subTableRows, (Map<String, Object>) result);
+            // 子表合计回写：sumFrom 配置的主表字段在子行落库后按 SUM 更新（自动发起流程前完成，
+            // 流程变量取到的是含合计的结果）
+            dynamicSubTableService.applySumFrom(database, dynamicForm.getMetaData(), subTableDefs,
+                    tableName, String.valueOf(((Map<String, Object>) result).get("id")));
         }
         // 表单启用工作流时，新增数据自动发起流程（表单字段值作为流程变量，供互斥网关与审批人脚本解析）
         if (autoStartFlow && isWorkflowForm && isInsert && result instanceof Map) {

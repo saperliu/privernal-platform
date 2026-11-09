@@ -161,6 +161,17 @@ public interface DynamicTableDataMapper extends DataScopeMapper {
     @IgnoreDataScope
     void deleteByParentIds(@Param("tableName") String tableName, @Param("list") List<String> list);
 
+    /** 子表列合计（按主行聚合，服务端按列元数据筛数值列） */
+    java.math.BigDecimal selectSumByParent(@Param("tableName") String tableName,
+                                           @Param("column") String column,
+                                           @Param("parentId") String parentId);
+
+    /** 单列按主键更新（子表合计回写主表字段用，列名服务端白名单给出） */
+    void updateColumnById(@Param("tableName") String tableName,
+                          @Param("column") String column,
+                          @Param("value") Object value,
+                          @Param("id") String id);
+
     /**
      * 子表行随主表行授权，不加行级数据范围：
      * 子表行的 department_id 取的是「保存时编辑人所在部门」，与主表行未必同部门。

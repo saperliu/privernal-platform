@@ -206,6 +206,17 @@
         </foreach>
     </delete>
 
+    <!-- 子表列合计（列/表名服务端白名单给出，按主行聚合） -->
+    <select id="selectSumByParent" resultType="java.math.BigDecimal">
+        select sum(`${column}`) from `${tableName}`
+        where parent_id = #{parentId} and deleted_flag = 'N'
+    </select>
+
+    <!-- 单列按主键更新（子表合计回写主表字段，列名服务端白名单给出） -->
+    <update id="updateColumnById">
+        update `${tableName}` set `${column}` = #{value} where id = #{id}
+    </update>
+
     <!-- 按父数据 ID 查询子表行（编辑回显） -->
     <select id="selectByParentId" resultType="java.util.HashMap">
         select * from `${tableName}` where parent_id = #{parentId} order by created_time asc

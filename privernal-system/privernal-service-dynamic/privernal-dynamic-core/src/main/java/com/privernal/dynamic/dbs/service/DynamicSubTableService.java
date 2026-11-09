@@ -85,6 +85,19 @@ public interface DynamicSubTableService {
     void deleteByParentIds(String database, String childTable, Collection<String> parentIds);
 
     /**
+     * 子表合计回写：主表字段 props.sumFrom={child:子表字段编码, column:汇总列}——
+     * 子行落库后按主行聚合子表列值，回写主表字段（数值合计，SQL SUM）
+     *
+     * @param database   数据源名称
+     * @param metaData   表单 metaData（收集 sumFrom 配置）
+     * @param defs       本表子表定义（配置里的 child 编码 ↔ 物理子表名映射）
+     * @param mainTable  主表表名
+     * @param mainRowId  主表数据 ID
+     */
+    void applySumFrom(String database, Object metaData, List<SubTableDef> defs,
+                      String mainTable, String mainRowId);
+
+    /**
      * 保存前校验「不允许重复」（props.unique）字段的值在库内唯一
      * <p>
      * 仅校验本轮提交中带值的字段；更新时排除自身 id。

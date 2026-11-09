@@ -236,6 +236,42 @@ public class DynamicSubTableServiceImpl implements DynamicSubTableService {
         log.debug("级联删除子表行数据：table={}, parentIds={}", childTable, parentIds);
     }
 
+    /**
+     * 子表合计回写：主表字段 props.sumFrom={child:子表字段编码, column:汇总列}。
+     * 子行落库后按主行聚合 SUM 回写主表字段；汇总列须是子表定义里的数值列（服务端按列元数据核对），
+     * 配置的 child 编码找不到对应子表定义时跳过（表单保存时子表尚未建立等场景）
+     */
+    @Override
+    @DS("#database")
+    @Transactional(readOnly = false, propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+    public void applySumFrom(String database, Object metaData, List<SubTableDef> defs,
+                             String mainTable, String mainRowId) {
+        if (metaData == null || defs == null || defs.isEmpty() || StringUtils.isEmpty(mainRowId)) {
+            return;
+        }
+        List<String[]> sumConfigs = new ArrayList<>();
+        FormTransferTable.collectSumFromFields(metaData, sumConfigs);
+        for (String[] config : sumConfigs) {
+            String mainField = config[0];
+            String childCode = config[1];
+            String sumColumn = config[2];
+            SubTableDef def = defs.stream()
+                    .filter(d -> childCode.equals(d.getField()))
+                    .findFirst().orElse(null);
+            if (def == null) {
+                continue;
+            }
+            assertValidIdentifier(def.getChildTable());
+            assertValidIdentifier(sumColumn);
+            assertValidIdentifier(mainTable);
+            java.math.BigDecimal sum = dynamicTableDataMapper.selectSumByParent(
+                    def.getChildTable(), sumColumn, mainRowId);
+            dynamicTableDataMapper.updateColumnById(mainTable, mainField, sum, mainRowId);
+            log.debug("子表合计回写：main={}.{} <- sum({}.{}) = {}", mainTable, mainField,
+                    def.getChildTable(), sumColumn, sum);
+        }
+    }
+
     @Override
     @DS("#database")
     @Transactional(readOnly = true)
