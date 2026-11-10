@@ -276,11 +276,12 @@ public class DynamicFormController extends BaseController {
     /**
      * 获取前端form配置详细信息
      */
-    @Operation(summary = "获取前端form配置详细信息", description = "获取前端form配置详细信息")
+    @Operation(summary = "获取前端form配置详细信息", description = "获取前端form配置详细信息；携带 businessId 时按版本钉定返回实例发起时刻的快照")
     @PreAuthorize(hasPermi = "dynamic:form:query")
     @GetMapping(value = "/back/dynamic/form/code/{code}")
-    public CommonResult<Object> findFormByCode(@PathVariable("code") String code) {
-        return CommonResult.ok(dynamicFormService.selectDynamicFormByTableCode(code));
+    public CommonResult<Object> findFormByCode(@PathVariable("code") String code,
+                                               @RequestParam(value = "businessId", required = false) String businessId) {
+        return CommonResult.ok(dynamicFormService.selectFormByCodeForBusiness(code, businessId));
     }
 
 }

@@ -57,6 +57,12 @@ public interface RemoteFlowService {
     CommonResult<Boolean> isBusinessDataParticipant(String tableCode, String businessId);
 
     /**
+     * 按业务数据id查流程实例发起时间（版本钉定用；查不到实例返回 null 数据）
+     */
+    @org.springframework.web.bind.annotation.GetMapping("/inner/flow/instance/start-time")
+    CommonResult<java.util.Date> getInstanceStartTimeByBusinessId(@org.springframework.web.bind.annotation.RequestParam("businessId") String businessId);
+
+    /**
      * 按业务数据id查询运行时表单权限（当前节点字段/按钮权限 + 当前用户是否审批人）
      *
      * @param tableCode  动态表单编码

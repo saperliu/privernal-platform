@@ -60,4 +60,21 @@ public class DynamicFlowAccessService {
             return false;
         }
     }
+
+    /**
+     * 按业务数据id查流程实例发起时间（版本钉定用）。查不到实例或流程侧异常返回 null
+     */
+    public java.util.Date getFlowStartTime(String businessId) {
+        if (StringUtils.isEmpty(businessId)) {
+            return null;
+        }
+        try {
+            CommonResult<java.util.Date> result =
+                    remoteFlowService.getInstanceStartTimeByBusinessId(businessId);
+            return result != null && result.getCode() == CommonResult.SUCCESS ? result.getData() : null;
+        } catch (Exception e) {
+            logger.warn("流程实例发起时间查询失败 businessId {}", businessId, e);
+            return null;
+        }
+    }
 }

@@ -61,6 +61,14 @@ public class RemoteFlowServiceImpl implements RemoteFlowService {
     @Autowired
     private IFlowFormService flowFormService;
 
+    @Operation(summary = "按业务数据查实例发起时间（内部）")
+    @GetMapping("/inner/flow/instance/start-time")
+    @Override
+    public CommonResult<java.util.Date> getInstanceStartTimeByBusinessId(@RequestParam("businessId") String businessId) {
+        Instance instance = flowInstanceService.getByBusinessId(businessId);
+        return CommonResult.ok(instance == null ? null : instance.getCreateTime());
+    }
+
     @Operation(summary = "启动流程（内部）")
     @PostMapping("/inner/flow/instance/start")
     @Override

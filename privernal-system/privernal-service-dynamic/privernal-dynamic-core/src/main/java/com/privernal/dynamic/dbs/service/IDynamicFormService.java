@@ -97,6 +97,12 @@ public interface IDynamicFormService {
     public DynamicForm selectDynamicFormByTableCode(String tableCode);
 
     /**
+     * 按业务数据取表单配置（版本钉定）：businessId 可定位流程实例时返回「发起时刻」的
+     * 版本快照 metaData，之后发布/回滚不影响在办实例；否则回退当前定义
+     */
+    public DynamicForm selectFormByCodeForBusiness(String tableCode, String businessId);
+
+    /**
      * 保存表单设计草稿：只写 DRAFT 快照留痕，不改 dynamic_form.meta_data、不 ALTER 物理表、不动关联登记，
      * 即草稿不生效；同一表单仅保留最新一条未发布草稿
      *

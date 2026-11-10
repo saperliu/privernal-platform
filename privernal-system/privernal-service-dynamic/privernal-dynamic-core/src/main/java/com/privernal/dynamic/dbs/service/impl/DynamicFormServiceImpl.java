@@ -32,6 +32,7 @@ import com.privernal.dynamic.dbs.mapper.DynamicFormColumnMapper;
 import com.privernal.dynamic.dbs.mapper.DynamicFormLogMapper;
 import com.privernal.dynamic.dbs.mapper.DynamicFormMapper;
 import com.privernal.dynamic.dbs.service.DynamicFormRelationService;
+import com.privernal.dynamic.dbs.service.DynamicFlowAccessService;
 import com.privernal.dynamic.dbs.service.DynamicRelationDataService;
 import com.privernal.dynamic.dbs.service.DynamicTableCodePrefixService;
 import com.privernal.dynamic.dbs.service.DynamicTableService;
@@ -79,6 +80,9 @@ public class DynamicFormServiceImpl implements IDynamicFormService {
 
     @Autowired
     private DynamicFormColumnMapper dynamicFormColumnMapper;
+
+    @Autowired
+    private DynamicFlowAccessService dynamicFlowAccessService;
 
     @Autowired
     private RemoteFlowService remoteFlowService;
@@ -526,6 +530,40 @@ public class DynamicFormServiceImpl implements IDynamicFormService {
         LambdaPrivernalWrapper<DynamicForm> queryWrapper = new LambdaPrivernalWrapper<>();
         queryWrapper.eq(DynamicForm::getTableCode, tableCode);
         return dynamicFormMapper.selectOne(queryWrapper);
+    }
+
+    /**
+     * 按业务数据取表单配置（版本钉定）：businessId 能定位到流程实例时，返回
+     * 「实例发起时刻」的版本快照 metaData（dynamic_form_log 里不晚于发起时间的最新 VERSION），
+     * 之后该表单再发布/回滚不影响在办实例的表单形态；无实例或实例早于版本机制时回退当前定义。
+     */
+    @Transactional(readOnly = true)
+    @Override
+    public DynamicForm selectFormByCodeForBusiness(String tableCode, String businessId) {
+        DynamicForm current = selectDynamicFormByTableCode(tableCode);
+        if (current == null || StringUtils.isEmpty(businessId)) {
+            return current;
+        }
+        java.util.Date startTime = dynamicFlowAccessService.getFlowStartTime(businessId);
+        if (startTime == null) {
+            return current;
+        }
+        LambdaPrivernalWrapper<DynamicFormLog> logWrapper = new LambdaPrivernalWrapper<>();
+        logWrapper.eq(DynamicFormLog::getFormId, current.getId());
+        logWrapper.eq(DynamicFormLog::getLogType, DynamicFormLog.LOG_TYPE_VERSION);
+        logWrapper.le(DynamicFormLog::getCreatedTime, startTime);
+        logWrapper.orderByDesc(DynamicFormLog::getCreatedTime);
+        logWrapper.last("limit 1");
+        DynamicFormLog pinned = dynamicFormLogMapper.selectOne(logWrapper);
+        if (pinned == null || pinned.getMetaData() == null) {
+            return current;
+        }
+        DynamicForm view = new DynamicForm();
+        BeanUtils.copyProperties(current, view);
+        view.setMetaData(pinned.getMetaData());
+        log.debug("版本钉定生效：table={} businessId={} 用快照 {}（{}）",
+                tableCode, businessId, pinned.getId(), pinned.getCreatedTime());
+        return view;
     }
 
     /**
