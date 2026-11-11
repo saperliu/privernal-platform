@@ -59,6 +59,12 @@ public final class FlowNodeExtUtil {
     /** ext 键：超时时间（小时） */
     public static final String KEY_TIMEOUT_HOURS = "wfTimeoutHours";
 
+    /** ext 键：重复催办间隔（分钟，>0 启用周期催办，由调度任务按固定间隔触发直到办结/达上限） */
+    public static final String KEY_URGE_MINUTES = "wfUrgeMinutes";
+
+    /** ext 键：重复催办最大次数（0=不限，直到任务办结自动取消） */
+    public static final String KEY_URGE_MAX_TIMES = "wfUrgeMaxTimes";
+
     /** ext 键：超时处理动作 */
     public static final String KEY_TIMEOUT_ACTION = "wfTimeoutAction";
 
@@ -167,5 +173,20 @@ public final class FlowNodeExtUtil {
     public static int resolveTimeoutHours(Map<String, String> ext) {
         int hours = parseIntValue(ext, KEY_TIMEOUT_HOURS);
         return hours > 0 ? hours : 0;
+    }
+
+    /**
+     * 解析重复催办间隔分钟数（大于 0 视为有效配置）
+     */
+    public static int resolveUrgeMinutes(Map<String, String> ext) {
+        int minutes = parseIntValue(ext, KEY_URGE_MINUTES);
+        return minutes > 0 ? minutes : 0;
+    }
+
+    /**
+     * 解析重复催办最大次数（0=不限）
+     */
+    public static int resolveUrgeMaxTimes(Map<String, String> ext) {
+        return Math.max(0, parseIntValue(ext, KEY_URGE_MAX_TIMES));
     }
 }

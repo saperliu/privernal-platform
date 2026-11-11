@@ -351,6 +351,13 @@ public class FormTransferTable {
             if ("input".equals(jsonObject.get("type"))) {
                 Object inputType = propsMap != null ? propsMap.get("type") : null;
                 param.setFieldType(formCompToColumnType(inputType != null ? inputType.toString() : "text"));
+            } else if ("formula".equals(jsonObject.get("type"))) {
+                // R2-11 文本公式分支：props.textType 开启时按 TEXT 落库（拼接结果），
+                // 默认仍按 DECIMAL（数值公式 90% 场景）；列类型在建表时定死，改 textType 需重建表单
+                Object textType = propsMap != null ? propsMap.get("textType") : null;
+                boolean textMode = Boolean.TRUE.equals(textType) || "true".equalsIgnoreCase(String.valueOf(textType));
+                param.setFieldType(mapper.getDatabaseTypeName(textMode
+                        ? DatabaseTypeMapper.TEXT : DatabaseTypeMapper.DECIMAL));
             } else {
                 if ("number".equals(jsonObject.get("type"))) {
                     Object precision = propsMap != null ? propsMap.get("precision") : null;
@@ -1102,7 +1109,9 @@ public class FormTransferTable {
      */
     /**
      * 收集表单 JSON 里的公式字段（type=formula：field=列编码、props.expression=求值表达式）。
-     * out 元素 = [列编码, 表达式]。
+     * out 元素 = [列编码, 表达式, textMode]（textMode=1 表示文本公式 props.textType）。
+     * 递归入口兼容两种容器：metaData 根（children/schemas 双下钻——设计器标准结构是
+     * schemas[0]=form 根节点+children，此前只走 children 导致公式字段收集恒空）。
      */
     public static void collectFormulaFields(Object node, List<String[]> out) {
         if (!(node instanceof Map)) {
@@ -1115,21 +1124,20 @@ public class FormTransferTable {
                 Object expression = ((Map<?, ?>) propsObj).get("expression");
                 Object field = json.get("field");
                 if (expression != null && !String.valueOf(expression).isEmpty() && field != null) {
-                    out.add(new String[]{String.valueOf(field), String.valueOf(expression)});
+                    Object textType = ((Map<?, ?>) propsObj).get("textType");
+                    boolean textMode = Boolean.TRUE.equals(textType)
+                            || "true".equalsIgnoreCase(String.valueOf(textType));
+                    out.add(new String[]{String.valueOf(field), String.valueOf(expression), textMode ? "1" : "0"});
                 }
             }
         }
-        Object children = json.get("children");
-        if (children instanceof List) {
-            for (Object child : (List<?>) children) {
-                collectFormulaFields(child, out);
-            }
-        }
+        recurseCollect(json, out, "formula");
     }
 
     /**
      * 收集子表合计配置（主表字段 props.sumFrom={child:子表字段编码, column:汇总列编码}）。
-     * out 元素 = [主表字段编码, 子表字段编码, 汇总列编码]。
+     * out 元素 = [主表字段编码, 子表字段编码, 汇总列编码]。递归口径同 collectFormulaFields
+     * （children/schemas 双下钻）。
      */
     public static void collectSumFromFields(Object node, List<String[]> out) {
         if (!(node instanceof Map)) {
@@ -1150,13 +1158,32 @@ public class FormTransferTable {
                 }
             }
         }
-        Object children = json.get("children");
-        if (children instanceof List) {
-            for (Object child : (List<?>) children) {
-                collectSumFromFields(child, out);
+        recurseCollect(json, out, "sumFrom");
+    }
+
+    /**
+     * 收集器共用下钻：children 与 schemas 两个容器键都走（设计器 metaData =
+     * {schemas:[form根{children:[...]}]}，叶子组件可能挂在任一层）
+     */
+    private static void recurseCollect(Map<?, ?> json, List<String[]> out, String kind) {
+        for (String container : new String[]{"children", "schemas"}) {
+            Object list = json.get(container);
+            if (list instanceof List) {
+                for (Object child : (List<?>) list) {
+                    if ("formula".equals(kind)) {
+                        collectFormulaFields(child, out);
+                    } else {
+                        collectSumFromFields(child, out);
+                    }
+                }
             }
         }
     }
+
+    /**
+     * 收集子表合计配置（主表字段 props.sumFrom={child:子表字段编码, column:汇总列编码}）：
+     * 实现并入上方 schemas/children 双下钻版本。
+     */
 
     public static DatabaseTypeMapper getTypeMapper() {
         DatabaseTypeMapper mapper = DynamicTypeContext.getTypeMapper();

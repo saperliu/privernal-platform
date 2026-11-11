@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.flow.mapper.FlowStatsMapper">
+
+    <!-- 秒级时间差方言片段（R2-17 绩效统计专用，模式同 DialectSnippets.xml） -->
+    <sql id="secondsBetween" databaseId="mysql">TIMESTAMPDIFF(SECOND, a.create_time, a.update_time)</sql>
+    <sql id="secondsBetween" databaseId="sqlite">CAST((julianday(a.update_time) - julianday(a.create_time)) * 86400 AS INTEGER)</sql>
+
+    <!-- 实例总览（R2-17） -->
+    <select id="selectOverview" resultType="java.util.HashMap">
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN i.flow_status = '1' THEN 1 ELSE 0 END) AS running,
+            SUM(CASE WHEN i.flow_status IN ('2', '3', '8') THEN 1 ELSE 0 END) AS finished,
+            SUM(CASE WHEN i.flow_status IN ('4', '5', '6', '10') THEN 1 ELSE 0 END) AS terminated
+        FROM flow_instance i
+        WHERE i.del_flag = '0'
+        <if test="timeStart != null and timeStart != ''">AND i.create_time &gt;= #{timeStart}</if>
+        <if test="timeEnd != null and timeEnd != ''">AND i.create_time &lt;= #{timeEnd}</if>
+    </select>
+
+    <!-- 实例平均办结时长（已完成实例，秒） -->
+    <select id="selectAvgDuration" resultType="java.lang.Double">
+        SELECT AVG(a.dur) FROM (
+            SELECT <include refid="secondsBetween"/> AS dur
+            FROM flow_instance a
+            WHERE a.del_flag = '0'
+            AND a.flow_status IN ('2', '3', '8')
+            AND a.update_time IS NOT NULL AND a.create_time IS NOT NULL
+            <if test="timeStart != null and timeStart != ''">AND a.create_time &gt;= #{timeStart}</if>
+            <if test="timeEnd != null and timeEnd != ''">AND a.create_time &lt;= #{timeEnd}</if>
+        ) a
+    </select>
+
+    <!-- 按流程定义统计（R2-17 看板主表） -->
+    <select id="selectDefinitionStats" resultType="java.util.HashMap">
+        SELECT
+            d.id AS definitionId,
+            d.flow_name AS flowName,
+            d.flow_code AS flowCode,
+            COUNT(*) AS total,
+            SUM(CASE WHEN i.flow_status = '1' THEN 1 ELSE 0 END) AS running,
+            SUM(CASE WHEN i.flow_status IN ('2', '3', '8') THEN 1 ELSE 0 END) AS finished,
+            SUM(CASE WHEN i.flow_status IN ('4', '5', '6', '10') THEN 1 ELSE 0 END) AS terminated
+        FROM flow_instance i
+        LEFT JOIN flow_definition d ON d.id = i.definition_id
+        WHERE i.del_flag = '0'
+        <if test="timeStart != null and timeStart != ''">AND i.create_time &gt;= #{timeStart}</if>
+        <if test="timeEnd != null and timeEnd != ''">AND i.create_time &lt;= #{timeEnd}</if>
+        GROUP BY d.id, d.flow_name, d.flow_code
+        ORDER BY total DESC
+        <if test="limit > 0">LIMIT #{limit}</if>
+    </select>
+
+    <!-- 按节点统计历史停留（PASS 记录；指定定义；驳回率=REJECT/(PASS+REJECT)） -->
+    <select id="selectNodeStats" resultType="java.util.HashMap">
+        SELECT
+            h.node_code AS nodeCode,
+            h.node_name AS nodeName,
+            SUM(CASE WHEN h.skip_type = 'PASS' THEN 1 ELSE 0 END) AS passCount,
+            SUM(CASE WHEN h.skip_type = 'REJECT' THEN 1 ELSE 0 END) AS rejectCount,
+            AVG(CASE WHEN h.skip_type = 'PASS' THEN a.dur END) AS avgDwellSeconds,
+            MAX(CASE WHEN h.skip_type = 'PASS' THEN a.dur END) AS maxDwellSeconds
+        FROM flow_his_task h
+        LEFT JOIN (
+            SELECT id AS hid, <include refid="secondsBetween"/> AS dur
+            FROM flow_his_task a
+        ) a ON a.hid = h.id
+        WHERE h.del_flag = '0'
+        AND h.definition_id = #{definitionId}
+        GROUP BY h.node_code, h.node_name
+        ORDER BY passCount DESC
+    </select>
+
+    <!-- 在办负载 TOP N（按权限标识聚合，Java 侧解析展示名） -->
+    <select id="selectHandlerWorkload" resultType="java.util.HashMap">
+        SELECT u.processed_by AS processedBy,
+               COUNT(DISTINCT t.id) AS pendingCount
+        FROM flow_task t
+        INNER JOIN flow_user u ON u.associated = t.id AND u.del_flag = '0'
+            AND u.type IN ('1', '2', '3')
+        WHERE t.del_flag = '0'
+        GROUP BY u.processed_by
+        ORDER BY pendingCount DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 单节点历史平均停留秒数（PASS，流程预测用） -->
+    <select id="selectNodeAvgDwell" resultType="java.util.HashMap">
+        SELECT AVG(a.dur) AS avgDwellSeconds, COUNT(*) AS sampleCount FROM (
+            SELECT <include refid="secondsBetween"/> AS dur
+            FROM flow_his_task a
+            WHERE a.del_flag = '0'
+            AND a.definition_id = #{definitionId}
+            AND a.node_code = #{nodeCode}
+            AND a.skip_type = 'PASS'
+            AND a.update_time IS NOT NULL AND a.create_time IS NOT NULL
+        ) a
+    </select>
+
+    <!-- 单节点历史通过/驳回次数（流程预测风险参考） -->
+    <select id="selectNodePassRate" resultType="java.util.HashMap">
+        SELECT
+            SUM(CASE WHEN h.skip_type = 'PASS' THEN 1 ELSE 0 END) AS passCount,
+            SUM(CASE WHEN h.skip_type = 'REJECT' THEN 1 ELSE 0 END) AS rejectCount
+        FROM flow_his_task h
+        WHERE h.del_flag = '0'
+        AND h.definition_id = #{definitionId}
+        AND h.node_code = #{nodeCode}
+    </select>
+</mapper>

@@ -151,6 +151,18 @@
         ORDER BY t.create_time ASC
     </select>
 
+    <!-- 离职移交（R2-17）：某用户（按权限标识匹配 flow_user 审批/转办/委托三类）名下仍待办理的任务 -->
+    <select id="selectPendingTasksByHandlerFlags" resultType="org.dromara.warm.flow.orm.entity.FlowTask">
+        SELECT DISTINCT t.*
+        FROM flow_task t
+        INNER JOIN flow_user u ON u.associated = t.id AND u.del_flag = '0'
+            AND u.type IN ('1', '2', '3')
+            AND u.processed_by IN
+            <foreach collection="flags" item="flag" open="(" separator="," close=")">#{flag}</foreach>
+        WHERE t.del_flag = '0'
+        ORDER BY t.create_time ASC
+    </select>
+
     <!-- 流程标题回写（实例 + 当前待办任务） -->
     <update id="updateInstanceFlowName">
         UPDATE flow_instance SET flow_name = #{flowName} WHERE id = #{instanceId}

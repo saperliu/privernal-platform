@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.flow.mapper.FlowUserDelegateMapper">
+
+    <!-- 当前生效的代理规则：status=1 且 now 在 [start_time, end_time] 内（空边界视为长期） -->
+    <select id="selectActiveByUserIds" resultType="com.privernal.flow.domain.FlowUserDelegate">
+        SELECT *
+        FROM flow_user_delegate
+        WHERE deleted_flag = 'N'
+        AND status = '1'
+        AND user_id IN
+        <foreach collection="userIds" item="userId" open="(" separator="," close=")">#{userId}</foreach>
+        AND (start_time IS NULL OR start_time &lt;= #{now})
+        AND (end_time IS NULL OR end_time &gt;= #{now})
+        ORDER BY created_time ASC
+    </select>
+
+    <!-- 代理人当前生效的被代理用户id列表 -->
+    <select id="selectDelegatedUserIdsByAgent" resultType="java.lang.String">
+        SELECT user_id
+        FROM flow_user_delegate
+        WHERE deleted_flag = 'N'
+        AND status = '1'
+        AND agent_id = #{agentId}
+        AND (start_time IS NULL OR start_time &lt;= #{now})
+        AND (end_time IS NULL OR end_time &gt;= #{now})
+        ORDER BY created_time ASC
+    </select>
+</mapper>

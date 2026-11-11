@@ -64,6 +64,16 @@ public interface IFlowTaskService {
     Map<String, Object> urge(Long taskId, String comment);
 
     /**
+     * 离职移交（R2-17）：把移交人名下全部待办任务转办给接收人
+     *
+     * @param fromUserId 移交人用户id
+     * @param toUserId   接收人用户id
+     * @param message    移交说明（空取默认文案）
+     * @return {total, success, failed, instanceCount}
+     */
+    Map<String, Object> handover(String fromUserId, String toUserId, String message);
+
+    /**
      * 驳回（退回上一节点/发起节点/指定节点）
      */
     Instance reject(FlowTaskHandleDTO handleDTO);

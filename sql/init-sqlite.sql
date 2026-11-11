@@ -960,6 +960,53 @@ CREATE TABLE IF NOT EXISTS flow_subflow_rel (
 );
 CREATE INDEX IF NOT EXISTS idx_fsr_child ON flow_subflow_rel (child_instance_id);
 CREATE INDEX IF NOT EXISTS idx_fsr_parent ON flow_subflow_rel (parent_instance_id);
+CREATE TABLE IF NOT EXISTS flow_task_comment (
+  id TEXT NOT NULL,
+  tenant_id TEXT NOT NULL DEFAULT 'system-default',
+  revision INTEGER NOT NULL DEFAULT 1,
+  created_by TEXT,
+  created_time TEXT,
+  updated_by TEXT,
+  updated_time TEXT,
+  deleted_flag TEXT NOT NULL DEFAULT 'N',
+  deleted_by TEXT,
+  deleted_time TEXT,
+  department_id TEXT,
+  organization_id TEXT,
+  instance_id TEXT NOT NULL,
+  task_id TEXT,
+  user_id TEXT,
+  user_name TEXT,
+  content TEXT NOT NULL,
+  attachments TEXT,
+  remark TEXT,
+  PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_ftc_instance ON flow_task_comment (instance_id);
+CREATE TABLE IF NOT EXISTS flow_user_delegate (
+  id TEXT NOT NULL,
+  tenant_id TEXT NOT NULL DEFAULT 'system-default',
+  revision INTEGER NOT NULL DEFAULT 1,
+  created_by TEXT,
+  created_time TEXT,
+  updated_by TEXT,
+  updated_time TEXT,
+  deleted_flag TEXT NOT NULL DEFAULT 'N',
+  deleted_by TEXT,
+  deleted_time TEXT,
+  department_id TEXT,
+  organization_id TEXT,
+  user_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  start_time TEXT,
+  end_time TEXT,
+  status TEXT NOT NULL DEFAULT '1',
+  remark TEXT,
+  PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_fud_user ON flow_user_delegate (user_id);
+CREATE INDEX IF NOT EXISTS idx_fud_agent ON flow_user_delegate (agent_id);
+
 
 CREATE TABLE IF NOT EXISTS flow_his_task (
   id INTEGER NOT NULL,
@@ -3007,6 +3054,18 @@ return cn.hutool.core.date.DateUtil.format(cursor, ''yyyy-MM-dd'')
 ','[{"name": "startDate", "type": "STRING", "required": true}, {"name": "days", "type": "NUMBER", "required": true}]','OBJECT',10,'DRAFT',1,NULL,'16663888968888889',NULL,'模板种子：工作日顺延（未含节假日表）',0,'system','2026-10-06 16:43:42.000',NULL,NULL,'N',NULL,NULL);
 INSERT INTO `system_dept_relation` VALUES ('system-default',1,'188666666666','2023-03-02 21:25:52',NULL,NULL,'N',NULL,NULL,'1631284688245706753',NULL,'16663888968888889','155555555555',1),('system-default',1,'188666666666','2023-03-02 21:27:11',NULL,NULL,'N',NULL,NULL,'1631285019985707010',NULL,'16663888968888889','16663888968888889',1),('system-default',1,'188666666666','2023-09-14 11:55:22',NULL,NULL,'N',NULL,NULL,'1702169136837296129',NULL,'16663888968888889','1702169136598220802',2),('system-default',1,'188666666666','2023-09-14 11:55:22',NULL,NULL,'N',NULL,NULL,'1702169136862461953',NULL,'155555555555','1702169136598220802',1),('system-default',1,'188666666666','2023-09-25 15:49:54',NULL,NULL,'N',NULL,NULL,'1706214426926067714',NULL,'16663888968888889','1706214426871541762',1);
 
+-- R2-14 模板市场：新页面菜单 + 应用包导出/导入按钮权限（授权由下方 CROSS JOIN 授权段自动覆盖；init 只在全新库执行）
+INSERT INTO `system_menu`
+(`id`, `menu_name`, `menu_code`, `order_num`, `visible`, `path`, `menu_type`, `permission`, `status`, `icon`,
+ `app_menu`, `component`, `params`, `is_frame`, `is_cache`, `parent_id`, `organization_id`, `tenant_id`, `revision`,
+ `created_by`, `created_time`, `deleted_flag`)
+SELECT 'r214-app-template-market-menu', '模板市场', 'system_app-template-market', 171, 1, '/system/app-template-market', 'C', 'system:appPackage:template', 1, 'icon-default', 0,
+       'self', NULL, 0, 0, '1798986040628969473', '16663888968888889', 'system-default', 1, '188666666666', datetime('now','localtime'), 'N'
+UNION ALL SELECT 'r214-apppkg-export-btn', '导出应用包', '', 1, 1, '', 'F', 'system:appPackage:export', 1, 'icon-default', 0,
+       '', NULL, 0, 0, 'cd2e0e2e6f2411ee983f00163e085602', '16663888968888889', 'system-default', 1, '188666666666', datetime('now','localtime'), 'N'
+UNION ALL SELECT 'r214-apppkg-import-btn', '导入应用包', '', 1, 1, '', 'F', 'system:appPackage:import', 1, 'icon-default', 0,
+       '', NULL, 0, 0, 'cd2e0e2e6f2411ee983f00163e085602', '16663888968888889', 'system-default', 1, '188666666666', datetime('now','localtime'), 'N';
+
 INSERT INTO `system_organization_menu`
   (`id`, `menu_id`, `app_id`, `status`, `organization_id`, `tenant_id`, `revision`,
    `created_by`, `created_time`, `deleted_flag`)
@@ -3207,3 +3266,23 @@ WHERE a.deleted_flag = 'N'
   AND NOT EXISTS (SELECT 1 FROM system_app_menu am
       WHERE am.app_id = a.id AND am.menu_id = m.id AND am.deleted_flag = 'N');
 COMMIT;
+
+-- R2-17 意见模板字典种子（审批意见弹窗下拉填充；管理入口=字典管理，dict_type=flow_opinion_template）
+INSERT OR IGNORE INTO system_dictionary_type (id,dict_name,dict_type,status,tenant_id,revision,created_by,created_time,deleted_flag,organization_id)
+VALUES ('1762900000000000001','审批意见模板','flow_opinion_template',1,'system-default',1,'SYSTEM','2026-11-12 00:00:00','N','16663888968888889');
+INSERT OR IGNORE INTO system_dictionary_data (id,dict_sort,dict_label,dict_value,dict_type,is_default,status,tenant_id,revision,created_by,created_time,deleted_flag,organization_id)
+VALUES
+('1762900000000000011',1,'同意','同意，请按计划推进后续工作。','flow_opinion_template','N',1,'system-default',1,'SYSTEM','2026-11-12 00:00:00','N','16663888968888889'),
+('1762900000000000012',2,'已阅','已阅。','flow_opinion_template','N',1,'system-default',1,'SYSTEM','2026-11-12 00:00:00','N','16663888968888889'),
+('1762900000000000013',3,'请补充','请补充相关材料后重新提交。','flow_opinion_template','N',1,'system-default',1,'SYSTEM','2026-11-12 00:00:00','N','16663888968888889');
+
+-- R2-17 流程绩效菜单种子（/flow/stats；五件套配套）
+INSERT OR IGNORE INTO system_menu (id,menu_name,menu_code,order_num,visible,path,menu_type,permission,status,icon,app_menu,component,is_frame,is_cache,parent_id,organization_id,tenant_id,revision,created_by,created_time,deleted_flag)
+VALUES ('1866100000000000008','流程绩效','flow_stats',7,0,'/flow/stats','C','flow:task:list',1,'mdi:chart-box-outline',0,'self',0,0,'1866100000000000001','16663888968888889','system-default',1,'SYSTEM','2026-11-12 00:00:00','N');
+INSERT OR IGNORE INTO system_app_menu (id,app_id,menu_id,status,organization_id,tenant_id,revision,created_by,created_time,deleted_flag)
+VALUES ('a0e42cdcc96e11f195b762e143ab8ec8','1768482874137485248','1866100000000000008',1,'16663888968888889','system-default',1,'SYSTEM','2026-11-12 00:00:00','N');
+INSERT OR IGNORE INTO system_organization_menu (id,menu_id,status,organization_id,tenant_id,revision,created_by,created_time,deleted_flag)
+VALUES ('1866300000000000008','1866100000000000008',1,'16663888968888889','system-default',1,'SYSTEM','2026-11-12 00:00:00','N');
+INSERT OR IGNORE INTO system_role_menu (id,role_id,menu_id,tenant_id,revision,created_by,created_time,deleted_flag)
+VALUES ('18662000000000000018','12263522227777777','1866100000000000008','system-default',1,'SYSTEM','2026-11-12 00:00:00','N'),
+       ('18662000000000000088','12263567888888','1866100000000000008','system-default',1,'SYSTEM','2026-11-12 00:00:00','N');

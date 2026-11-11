@@ -664,7 +664,9 @@ public class CommonController {
     /**
      * 公式字段服务端权威求值：按表单 JSON 收集 type=formula 的字段（props.expression），
      * 以本行已提交字段值求值后回填 data（后续查重/校验挂点/回写全链路吃到同一结果）。
-     * 求值失败抛业务异常中止保存——公式是业务逻辑，静默吞错会把错算成对的数。
+     * 文本公式（props.textType，R2-11）以空串参与未提交引用并把结果统一转字符串；
+     * 数值公式未提交引用保持 null（算术失败上抛）。求值失败抛业务异常中止保存——
+     * 公式是业务逻辑，静默吞错会把错算成对的数。
      */
     private void applyFormulaFields(DynamicForm dynamicForm, Map<String, Object> data) {
         if (dynamicForm == null || dynamicForm.getMetaData() == null) {
@@ -676,8 +678,15 @@ public class CommonController {
             return;
         }
         for (String[] formula : formulas) {
+            boolean textMode = formula.length > 2 && "1".equals(formula[2]);
             try {
-                data.put(formula[0], com.privernal.dynamic.dba.utils.FormulaEvaluator.eval(formula[1], data));
+                Map<String, Object> values = textMode
+                        ? com.privernal.dynamic.dba.utils.FormulaTextSupport.normalizeTextValues(formula[1], data)
+                        : data;
+                Object value = com.privernal.dynamic.dba.utils.FormulaEvaluator.eval(formula[1], values);
+                data.put(formula[0], textMode
+                        ? com.privernal.dynamic.dba.utils.FormulaTextSupport.asText(value)
+                        : value);
             } catch (Exception e) {
                 throw new ServiceException("公式字段 [" + formula[0] + "] 求值失败：" + e.getMessage());
             }

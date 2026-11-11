@@ -124,4 +124,9 @@ public interface FlowQueryMapper {
      * 查询全部待办任务及其节点扩展配置（按节点 ext 的超时设置逐个判定）
      */
     List<FlowTodoTaskExtDTO> selectTodoTasksWithNodeExt();
+
+    /**
+     * 离职移交（R2-17）：查询某用户（按权限标识匹配 flow_user）名下仍待办理的任务
+     */
+    List<FlowTask> selectPendingTasksByHandlerFlags(@Param("flags") List<String> flags);
 }

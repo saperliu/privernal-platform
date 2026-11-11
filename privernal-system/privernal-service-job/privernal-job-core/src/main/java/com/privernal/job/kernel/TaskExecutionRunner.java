@@ -383,8 +383,14 @@ public class TaskExecutionRunner {
         return logMapper.selectLogByUniqueId(taskId, formatFireTime(fireTime), attempt);
     }
 
+    /**
+     * fire_time 反查格式：必须与 insertLogIgnore 落库格式一致。SQLite 侧 SqliteDateTypeHandler
+     * 落 TEXT 秒级（无毫秒）——此前带 .SSS 反查在 SQLite 上永远 miss，执行行滞留 RUNNING、
+     * 任务卡 TRIGGERED（11-06 切库以来调度收尾整体失灵的根因）；MySQL datetime(3) 隐式转换
+     * 秒级字符串同样命中（attempt 参与幂等键，同秒多轮不冲突）。
+     */
     private String formatFireTime(Date fireTime) {
-        return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(fireTime);
+        return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(fireTime);
     }
 
 

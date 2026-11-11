@@ -163,6 +163,20 @@ public class FlowTaskController extends BaseController {
     }
 
     /**
+     * 离职移交（R2-17）：把移交人名下全部待办任务转办给接收人（单条失败不影响其余）
+     */
+    @Operation(summary = "离职移交")
+    @PreAuthorize(hasPermi = "flow:task:adjust")
+    @Log(title = "流程任务-离职移交", operationType = OperationType.UPDATE)
+    @PostMapping("/handover")
+    public CommonResult<Map<String, Object>> handover(@RequestBody Map<String, Object> body) {
+        String fromUserId = body == null || body.get("fromUserId") == null ? "" : String.valueOf(body.get("fromUserId"));
+        String toUserId = body == null || body.get("toUserId") == null ? "" : String.valueOf(body.get("toUserId"));
+        String message = body == null || body.get("message") == null ? "" : String.valueOf(body.get("message"));
+        return CommonResult.ok(flowTaskService.handover(fromUserId, toUserId, message));
+    }
+
+    /**
      * 驳回（rejectType：LAST 上一节点 / START 发起节点 / TARGET 指定节点）
      */
     @Operation(summary = "驳回任务")

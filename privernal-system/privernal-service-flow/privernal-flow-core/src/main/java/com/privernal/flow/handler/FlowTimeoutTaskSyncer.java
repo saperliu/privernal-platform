@@ -19,6 +19,7 @@ package com.privernal.flow.handler;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.privernal.common.core.utils.StringUtils;
+import com.privernal.flow.notice.FlowUrgeNotifier;
 import com.privernal.flow.utils.FlowNodeExtUtil;
 import com.privernal.job.api.ScheduleTaskClient;
 import com.privernal.job.api.TaskRef;
@@ -133,56 +134,80 @@ public class FlowTimeoutTaskSyncer {
             List<Task> todoTasks = FlowEngine.taskService().getByInsId(instanceId);
             List<Task> safeTodos = todoTasks == null ? new ArrayList<>() : todoTasks;
             Map<String, Task> currentKeys = new HashMap<>();
+            Map<String, Task> currentUrgeKeys = new HashMap<>();
             int registered = 0;
+            int urgeRegistered = 0;
             for (Task task : safeTodos) {
                 String bizKey = bizKey(instanceId, task.getId());
                 currentKeys.put(bizKey, task);
                 Node node = ccTaskHandler.findNode(task);
                 Map<String, String> ext = FlowNodeExtUtil.parseExt(node == null ? null : node.getExt());
                 int hours = FlowNodeExtUtil.resolveTimeoutHours(ext);
-                if (hours <= 0) {
-                    continue;
+                if (hours > 0) {
+                    Date now = new Date();
+                    Date fireTime = resetTaskIds != null && resetTaskIds.contains(task.getId())
+                            ? new Date(now.getTime() + hours * 3600_000L)
+                            : new Date(task.getCreateTime().getTime() + hours * 3600_000L);
+                    if (fireTime.before(now)) {
+                        // 已超时：30s 后由调度触发，经 handler 复核后立即处置（不必等每日兜底）
+                        fireTime = new Date(now.getTime() + 30_000L);
+                    }
+                    JSONObject actionConfig = new JSONObject();
+                    actionConfig.set("action", ext.getOrDefault(FlowNodeExtUtil.KEY_TIMEOUT_ACTION,
+                            FlowNodeExtUtil.TIMEOUT_AUTO_PASS));
+                    JSONObject bizContext = new JSONObject();
+                    bizContext.set("instanceId", instanceId);
+                    bizContext.set("taskId", task.getId());
+                    bizContext.set("nodeCode", task.getNodeCode());
+                    TaskRef ref = scheduleTaskClient.registerOnce(orgId, "WORKFLOW", bizKey, fireTime,
+                            "WORKFLOW_TIMEOUT", actionConfig.toString(), bizContext.toString(), null);
+                    registered++;
+                    if (ref.isDeferred()) {
+                        log.info("[flow-timeout] 任务在途，延迟生效（下一事件重试）insId={} taskId={}", instanceId, task.getId());
+                    }
                 }
-                Date now = new Date();
-                Date fireTime = resetTaskIds != null && resetTaskIds.contains(task.getId())
-                        ? new Date(now.getTime() + hours * 3600_000L)
-                        : new Date(task.getCreateTime().getTime() + hours * 3600_000L);
-                if (fireTime.before(now)) {
-                    // 已超时：30s 后由调度触发，经 handler 复核后立即处置（不必等每日兜底）
-                    fireTime = new Date(now.getTime() + 30_000L);
-                }
-                JSONObject actionConfig = new JSONObject();
-                actionConfig.set("action", ext.getOrDefault(FlowNodeExtUtil.KEY_TIMEOUT_ACTION,
-                        FlowNodeExtUtil.TIMEOUT_AUTO_PASS));
-                JSONObject bizContext = new JSONObject();
-                bizContext.set("instanceId", instanceId);
-                bizContext.set("taskId", task.getId());
-                bizContext.set("nodeCode", task.getNodeCode());
-                TaskRef ref = scheduleTaskClient.registerOnce(orgId, "WORKFLOW", bizKey, fireTime,
-                        "WORKFLOW_TIMEOUT", actionConfig.toString(), bizContext.toString(), null);
-                registered++;
-                if (ref.isDeferred()) {
-                    log.info("[flow-timeout] 任务在途，延迟生效（下一事件重试）insId={} taskId={}", instanceId, task.getId());
+                // R2-17 重复催办：节点配了 wfUrgeMinutes>0 → 固定间隔周期催办（幂等注册/改期），
+                // 任务办结/消失由下方前缀取消循环对账取消
+                int urgeMinutes = FlowNodeExtUtil.resolveUrgeMinutes(ext);
+                if (urgeMinutes > 0) {
+                    String urgeKey = urgeBizKey(instanceId, task.getId());
+                    currentUrgeKeys.put(urgeKey, task);
+                    int maxTimes = FlowNodeExtUtil.resolveUrgeMaxTimes(ext);
+                    scheduleTaskClient.registerFixedDelay(orgId, "WORKFLOW", urgeKey, null,
+                            urgeMinutes * 60, WorkflowUrgeActionHandler.ACTION_TYPE,
+                            FlowUrgeNotifier.buildActionConfig(maxTimes, instanceId, task.getId(), task.getNodeCode(),
+                                    urgeMinutes * 60),
+                            null);
+                    urgeRegistered++;
                 }
             }
             // 引擎已不存在的待办：取消遗留任务行（按实例前缀精确命中，§10.1）
-            String prefix = "wf:ins:" + instanceId + ":task:";
-            int cancelled = 0;
-            for (String existingKey : scheduleTaskClient.listActiveBizKeys(orgId, "WORKFLOW", prefix)) {
-                if (!currentKeys.containsKey(existingKey)) {
-                    String taskIdPart = existingKey.substring(prefix.length());
-                    scheduleTaskClient.cancel(orgId, "WORKFLOW", existingKey);
-                    cancelled++;
-                    log.info("[flow-timeout] 待办已不存在，取消超时任务 insId={} taskId={}", instanceId, taskIdPart);
-                }
-            }
-            if (registered > 0 || cancelled > 0) {
-                log.info("[flow-timeout] synced instanceId={} todo={} registered={} cancelled={}",
-                        instanceId, safeTodos.size(), registered, cancelled);
+            int cancelled = cancelByPrefix(orgId, instanceId, "wf:ins:" + instanceId + ":task:", currentKeys);
+            int urgeCancelled = cancelByPrefix(orgId, instanceId, urgeBizKey(instanceId, null), currentUrgeKeys);
+            if (registered > 0 || cancelled > 0 || urgeRegistered > 0 || urgeCancelled > 0) {
+                log.info("[flow-timeout] synced instanceId={} todo={} registered={} cancelled={} urgeRegistered={} urgeCancelled={}",
+                        instanceId, safeTodos.size(), registered, cancelled, urgeRegistered, urgeCancelled);
             }
         } catch (Exception e) {
             log.error("[flow-timeout] 同步失败 instanceId={}", instanceId, e);
         }
+    }
+
+    /** 按前缀对账取消：现存注册键不在 currentKeys（待办已不存在/配置已关）则取消 */
+    private int cancelByPrefix(String orgId, Long instanceId, String prefix, Map<String, Task> currentKeys) {
+        int cancelled = 0;
+        try {
+            for (String existingKey : scheduleTaskClient.listActiveBizKeys(orgId, "WORKFLOW", prefix)) {
+                if (!currentKeys.containsKey(existingKey)) {
+                    scheduleTaskClient.cancel(orgId, "WORKFLOW", existingKey);
+                    cancelled++;
+                    log.info("[flow-timeout] 待办已不存在，取消调度任务 insId={} bizKey={}", instanceId, existingKey);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[flow-timeout] 前缀对账取消失败 insId={} prefix={}", instanceId, prefix, e);
+        }
+        return cancelled;
     }
 
     /** 组织反查：实例发起人 → 用户组织（先例 FlowTaskServiceImpl.buildSystemTaskContext） */
@@ -204,6 +229,13 @@ public class FlowTimeoutTaskSyncer {
 
     public static String bizKey(Long instanceId, Long taskId) {
         return "wf:ins:" + instanceId + ":task:" + taskId;
+    }
+
+    /**
+     * 重复催办调度任务 biz_key（taskId 为 null 时返回实例级前缀，供对账取消）
+     */
+    public static String urgeBizKey(Long instanceId, Long taskId) {
+        return "wf:urge:ins:" + instanceId + ":task:" + (taskId == null ? "" : taskId);
     }
 
     @PreDestroy

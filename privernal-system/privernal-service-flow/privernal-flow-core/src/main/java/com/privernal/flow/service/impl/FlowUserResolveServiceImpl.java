@@ -69,6 +69,10 @@ public class FlowUserResolveServiceImpl implements IFlowUserResolveService {
     @Autowired
     private RemoteUserService remoteUserService;
 
+    /** R2-17 流程代理规则（代理钩子 + 待办可见性扩展共用） */
+    @Autowired
+    private com.privernal.flow.mapper.FlowUserDelegateMapper flowUserDelegateMapper;
+
     @Override
     public List<String> expandCurrentUserFlags() {
         String userId = SecurityUtils.getUserId();
@@ -94,6 +98,20 @@ public class FlowUserResolveServiceImpl implements IFlowUserResolveService {
         String departmentId = SecurityUtils.getDepartmentId();
         if (StringUtils.isNotEmpty(departmentId)) {
             flags.add(FlowPermissionTypeEnum.DEPT.getCode() + FlowConstant.PERMISSION_TYPE_SEPARATOR + departmentId);
+        }
+        // R2-17 流程代理：我代理的人名下待办也进我的待办列表（裸 id + user: 前缀两形态都加）
+        try {
+            List<String> delegatedUsers = flowUserDelegateMapper.selectDelegatedUserIdsByAgent(userId, new java.util.Date());
+            if (delegatedUsers != null) {
+                for (String delegatedUser : delegatedUsers) {
+                    if (StringUtils.isNotEmpty(delegatedUser)) {
+                        flags.add(delegatedUser);
+                        flags.add(FlowPermissionTypeEnum.USER.getCode() + FlowConstant.PERMISSION_TYPE_SEPARATOR + delegatedUser);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("展开用户代理标识失败 userId={}", userId, e);
         }
         return new ArrayList<>(flags);
     }
@@ -131,6 +149,23 @@ public class FlowUserResolveServiceImpl implements IFlowUserResolveService {
                 userIds.addAll(resolveByType(typeEnum, value));
             } catch (Exception e) {
                 log.warn("解析办理人权限标识失败 flag={}", permission, e);
+            }
+        }
+        // R2-17 流程代理：解析出的办理人若配了生效中的代理规则，代理人一并加入办理人
+        // （代理人与原办理人都可办理；查库失败不阻断任务创建，只少代理）
+        if (!userIds.isEmpty()) {
+            try {
+                List<com.privernal.flow.domain.FlowUserDelegate> delegates =
+                        flowUserDelegateMapper.selectActiveByUserIds(new ArrayList<>(userIds), new java.util.Date());
+                if (delegates != null) {
+                    for (com.privernal.flow.domain.FlowUserDelegate delegate : delegates) {
+                        if (delegate != null && StringUtils.isNotEmpty(delegate.getAgentId())) {
+                            userIds.add(delegate.getAgentId());
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("展开办理人代理规则失败（仅少代理，不阻断）", e);
             }
         }
         return new ArrayList<>(userIds);

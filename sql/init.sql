@@ -972,6 +972,57 @@ CREATE TABLE `flow_subflow_rel` (
   KEY `idx_fsr_child` (`child_instance_id`) USING BTREE,
   KEY `idx_fsr_parent` (`parent_instance_id`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='流程父子实例关系（R2-18 子流程桥接）';
+DROP TABLE IF EXISTS `flow_task_comment`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `flow_task_comment` (
+  `id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '主键',
+  `tenant_id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'system-default' COMMENT '租户号',
+  `revision` int NOT NULL DEFAULT '1' COMMENT '乐观锁',
+  `created_by` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '创建人',
+  `created_time` datetime DEFAULT NULL COMMENT '创建时间',
+  `updated_by` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '更新人',
+  `updated_time` datetime DEFAULT NULL COMMENT '更新时间',
+  `deleted_flag` varchar(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'N' COMMENT '是否删除',
+  `deleted_by` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '删除人',
+  `deleted_time` datetime DEFAULT NULL COMMENT '删除时间',
+  `department_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '所属部门',
+  `organization_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '所属组织（保存时显式带入）',
+  `instance_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '流程实例id（flow_instance.id）',
+  `task_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '流程任务id（可空：实例级评论不带任务）',
+  `user_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '评论人用户id',
+  `user_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '评论人姓名',
+  `content` varchar(2000) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '评论内容',
+  `attachments` text CHARACTER SET utf8mb4 COLLATE utf8mb4_bin COMMENT '附件 JSON 数组（[{fileId,name,url}]）',
+  `remark` varchar(900) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '备注（BaseEntity 通用列）',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_ftc_instance` (`instance_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='流程实例评论（R2-17 评论与附件）';
+DROP TABLE IF EXISTS `flow_user_delegate`;
+CREATE TABLE `flow_user_delegate` (
+  `id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '主键',
+  `tenant_id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'system-default' COMMENT '租户号',
+  `revision` int NOT NULL DEFAULT '1' COMMENT '乐观锁',
+  `created_by` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '创建人',
+  `created_time` datetime DEFAULT NULL COMMENT '创建时间',
+  `updated_by` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '更新人',
+  `updated_time` datetime DEFAULT NULL COMMENT '更新时间',
+  `deleted_flag` varchar(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'N' COMMENT '是否删除',
+  `deleted_by` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '删除人',
+  `deleted_time` datetime DEFAULT NULL COMMENT '删除时间',
+  `department_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '所属部门',
+  `organization_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '所属组织（保存时显式带入）',
+  `user_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '被代理人用户id（待办原办理人）',
+  `agent_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '代理人用户id（一并加入办理人）',
+  `start_time` datetime DEFAULT NULL COMMENT '代理开始时间（空=立即生效）',
+  `end_time` datetime DEFAULT NULL COMMENT '代理结束时间（空=长期有效）',
+  `status` varchar(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '1' COMMENT '状态（1启用 0停用）',
+  `remark` varchar(900) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '说明',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_fud_user` (`user_id`) USING BTREE,
+  KEY `idx_fud_agent` (`agent_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='流程代理规则（R2-17 代理与离职移交）';
+
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `flow_his_task`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -2634,6 +2685,14 @@ INSERT INTO `dynamic_script_asset` VALUES ('08b81220c16211f18fc3a5e694323b94',NU
 INSERT INTO `system_dept_relation` VALUES ('system-default',1,'188666666666','2023-03-02 21:25:52',NULL,NULL,'N',NULL,NULL,'1631284688245706753',NULL,'16663888968888889','155555555555',1),('system-default',1,'188666666666','2023-03-02 21:27:11',NULL,NULL,'N',NULL,NULL,'1631285019985707010',NULL,'16663888968888889','16663888968888889',1),('system-default',1,'188666666666','2023-09-14 11:55:22',NULL,NULL,'N',NULL,NULL,'1702169136837296129',NULL,'16663888968888889','1702169136598220802',2),('system-default',1,'188666666666','2023-09-14 11:55:22',NULL,NULL,'N',NULL,NULL,'1702169136862461953',NULL,'155555555555','1702169136598220802',1),('system-default',1,'188666666666','2023-09-25 15:49:54',NULL,NULL,'N',NULL,NULL,'1706214426926067714',NULL,'16663888968888889','1706214426871541762',1);
 
 -- ----------------------------------------------------------------------------
+-- R2-14 模板市场：新页面菜单 + 应用包导出/导入按钮权限（授权由下方种子授权段 CROSS JOIN 自动覆盖）
+-- ----------------------------------------------------------------------------
+INSERT INTO `system_menu` VALUES
+('r214-app-template-market-menu','模板市场','system_app-template-market',171,1,'/system/app-template-market','C','system:appPackage:template',1,'icon-default',0,'self',NULL,0,0,'1798986040628969473','16663888968888889','system-default',1,'188666666666','2026-11-12 00:00:00',NULL,NULL,NULL,NULL,NULL,'N'),
+('r214-apppkg-export-btn','导出应用包','',1,1,'','F','system:appPackage:export',1,'icon-default',0,'',NULL,0,0,'cd2e0e2e6f2411ee983f00163e085602','16663888968888889','system-default',1,'188666666666','2026-11-12 00:00:00',NULL,NULL,NULL,NULL,NULL,'N'),
+('r214-apppkg-import-btn','导入应用包','',1,1,'','F','system:appPackage:import',1,'icon-default',0,'',NULL,0,0,'cd2e0e2e6f2411ee983f00163e085602','16663888968888889','system-default',1,'188666666666','2026-11-12 00:00:00',NULL,NULL,NULL,NULL,NULL,'N');
+
+-- ----------------------------------------------------------------------------
 -- 种子授权：默认组织、两个内置角色拥有全部平台菜单（与上方菜单种子保持一致）
 -- 新增菜单后如需授权，参照下面两条语句补授或通过「企业管理/菜单授权」页面操作
 -- ----------------------------------------------------------------------------
@@ -3095,3 +3154,23 @@ SET FOREIGN_KEY_CHECKS = 1;
 --   SELECT COUNT(*) FROM system_app_info;    -- 期望 2（SYSTEM/PLATFORM）
 -- 默认登录：admin / admin123（登录接口传 SHA512('admin123') 的摘要，页面端自动处理）
 -- ============================================================================
+
+-- R2-17 意见模板字典种子（审批意见弹窗下拉填充；管理入口=字典管理，dict_type=flow_opinion_template）
+INSERT INTO `system_dictionary_type` (`id`,`dict_name`,`dict_type`,`status`,`tenant_id`,`revision`,`created_by`,`created_time`,`deleted_flag`,`organization_id`)
+VALUES ('1762900000000000001','审批意见模板','flow_opinion_template',1,'system-default',1,'SYSTEM','2026-11-12 00:00:00','N','16663888968888889');
+INSERT INTO `system_dictionary_data` (`id`,`dict_sort`,`dict_label`,`dict_value`,`dict_type`,`is_default`,`status`,`tenant_id`,`revision`,`created_by`,`created_time`,`deleted_flag`,`organization_id`)
+VALUES
+('1762900000000000011',1,'同意','同意，请按计划推进后续工作。','flow_opinion_template','N',1,'system-default',1,'SYSTEM','2026-11-12 00:00:00','N','16663888968888889'),
+('1762900000000000012',2,'已阅','已阅。','flow_opinion_template','N',1,'system-default',1,'SYSTEM','2026-11-12 00:00:00','N','16663888968888889'),
+('1762900000000000013',3,'请补充','请补充相关材料后重新提交。','flow_opinion_template','N',1,'system-default',1,'SYSTEM','2026-11-12 00:00:00','N','16663888968888889');
+
+-- R2-17 流程绩效菜单种子（/flow/stats；五件套配套：menu + app_menu + org_menu + role_menu）
+INSERT INTO `system_menu` (`id`,`menu_name`,`menu_code`,`order_num`,`visible`,`path`,`menu_type`,`permission`,`status`,`icon`,`app_menu`,`component`,`is_frame`,`is_cache`,`parent_id`,`organization_id`,`tenant_id`,`revision`,`created_by`,`created_time`,`deleted_flag`)
+VALUES ('1866100000000000008','流程绩效','flow_stats',7,0,'/flow/stats','C','flow:task:list',1,'mdi:chart-box-outline',0,'self',0,0,'1866100000000000001','16663888968888889','system-default',1,'SYSTEM','2026-11-12 00:00:00','N');
+INSERT INTO `system_app_menu` (`id`,`app_id`,`menu_id`,`status`,`organization_id`,`tenant_id`,`revision`,`created_by`,`created_time`,`deleted_flag`)
+VALUES ('a0e42cdcc96e11f195b762e143ab8ec8','1768482874137485248','1866100000000000008',1,'16663888968888889','system-default',1,'SYSTEM','2026-11-12 00:00:00','N');
+INSERT INTO `system_organization_menu` (`id`,`menu_id`,`status`,`organization_id`,`tenant_id`,`revision`,`created_by`,`created_time`,`deleted_flag`)
+VALUES ('1866300000000000008','1866100000000000008',1,'16663888968888889','system-default',1,'SYSTEM','2026-11-12 00:00:00','N');
+INSERT INTO `system_role_menu` (`id`,`role_id`,`menu_id`,`tenant_id`,`revision`,`created_by`,`created_time`,`deleted_flag`)
+VALUES ('18662000000000000018','12263522227777777','1866100000000000008','system-default',1,'SYSTEM','2026-11-12 00:00:00','N'),
+       ('18662000000000000088','12263567888888','1866100000000000008','system-default',1,'SYSTEM','2026-11-12 00:00:00','N');

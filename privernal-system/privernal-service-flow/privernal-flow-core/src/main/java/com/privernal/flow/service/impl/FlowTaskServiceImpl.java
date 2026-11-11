@@ -129,6 +129,10 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
     @Autowired
     private org.springframework.beans.factory.ObjectProvider<com.privernal.flow.notice.FlowNoticeSender> noticeSenderProvider;
 
+    /** 催办消息发送（手动催办与重复催办调度共用，R2-17） */
+    @Autowired
+    private com.privernal.flow.notice.FlowUrgeNotifier urgeNotifier;
+
     @Autowired
     private cn.dev33.satoken.dao.SaTokenDao saTokenDao;
 
@@ -212,6 +216,7 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
     /**
      * 手动催办：给任务当前办理人发催办消息（站内信落库 + 实时推送）。
      * 发起人或审批权限持有者可催办；同任务同催办人 10 分钟限一次，防连点轰炸。
+     * 消息组装与发送抽到 FlowUrgeNotifier（R2-17 重复催办调度共用同一发送链）。
      */
     @Override
     @DS("master")
@@ -221,18 +226,7 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
             throw new ServiceException("任务不存在或已办结");
         }
         // 办理人取任务在办用户（审批/转办/委派），与待办列表的口径一致
-        List<User> todoUsers = FlowEngine.userService().listByAssociatedAndTypes(taskId,
-                org.dromara.warm.flow.core.enums.UserType.APPROVAL.getKey(),
-                org.dromara.warm.flow.core.enums.UserType.TRANSFER.getKey(),
-                org.dromara.warm.flow.core.enums.UserType.DEPUTE.getKey());
-        List<String> handlers = new ArrayList<>();
-        if (todoUsers != null) {
-            for (User user : todoUsers) {
-                if (StringUtils.isNotEmpty(user.getProcessedBy())) {
-                    handlers.add(user.getProcessedBy());
-                }
-            }
-        }
+        List<String> handlers = urgeNotifier.resolveHandlers(taskId);
         if (handlers.isEmpty()) {
             throw new ServiceException("该任务当前没有办理人，无法催办");
         }
@@ -242,19 +236,68 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
             throw new ServiceException("该任务您刚催办过，请 10 分钟后再试");
         }
         saTokenDao.set(lockKey, "1", 10 * 60);
-        Instance instance = FlowEngine.insService().getById(task.getInstanceId());
-        FlowNoticeMessage notice = new FlowNoticeMessage();
-        notice.setEventType("URGE");
-        notice.setInstanceId(task.getInstanceId());
-        notice.setBusinessId(instance == null ? null : instance.getBusinessId());
-        notice.setFlowName(instance == null ? null : instance.getFlowName());
-        String flowName = instance == null || StringUtils.isEmpty(instance.getFlowName()) ? "流程" : instance.getFlowName();
-        notice.setTitle("催办提醒：" + flowName);
-        notice.setContent(StringUtils.isNotEmpty(comment) ? comment : "您的待办任务已收到催办，请尽快处理。");
-        notice.setUserIds(handlers);
-        noticeSenderProvider.getObject().send(notice);
+        int sent = urgeNotifier.send(task, comment);
         Map<String, Object> result = new HashMap<>();
-        result.put("urgedUsers", handlers.size());
+        result.put("urgedUsers", sent);
+        return result;
+    }
+
+    /**
+     * 离职移交（R2-17）：把移交人名下全部待办逐条转办给接收人（单条失败不影响其余）。
+     * 转办走引擎原生 transfer：reductionHandlers 同时带裸 id 与 user: 前缀两种形态
+     * （flow_user.processed_by 存在转换前后两种存储），只移除移交人的在办行、不动会签同事；
+     * 逐实例触发超时/催办同步器（换人重置计时，办理人变更后的调度任务对齐）。
+     */
+    @Override
+    @DS("master")
+    public Map<String, Object> handover(String fromUserId, String toUserId, String message) {
+        if (StringUtils.isEmpty(fromUserId) || StringUtils.isEmpty(toUserId)) {
+            throw new ServiceException("移交人与接收人不能为空");
+        }
+        if (fromUserId.equals(toUserId)) {
+            throw new ServiceException("接收人不能与移交人相同");
+        }
+        CommonResult<SystemUserDTO> target = remoteUserService.findUserById(toUserId, "");
+        if (target == null || target.getCode() != CommonResult.SUCCESS || target.getData() == null) {
+            throw new ServiceException("接收人不存在：" + toUserId);
+        }
+        List<String> flags = List.of(fromUserId,
+                FlowPermissionTypeEnum.USER.getCode() + FlowConstant.PERMISSION_TYPE_SEPARATOR + fromUserId);
+        List<FlowTask> tasks = flowQueryMapper.selectPendingTasksByHandlerFlags(flags);
+        int success = 0;
+        int failed = 0;
+        Set<Long> instanceIds = new LinkedHashSet<>();
+        Set<Long> resetTaskIds = new LinkedHashSet<>();
+        for (Task task : tasks) {
+            try {
+                FlowParams params = FlowParams.build()
+                        .handler(fromUserId)
+                        .addHandlers(List.of(toUserId))
+                        .reductionHandlers(List.of(fromUserId,
+                                FlowPermissionTypeEnum.USER.getCode() + FlowConstant.PERMISSION_TYPE_SEPARATOR + fromUserId))
+                        // 管理员代为移交：操作人不一定在办理人之列，绕过引擎的操作人校验（同超时处置口径）
+                        .ignore(true)
+                        .message(StringUtils.isEmpty(message) ? "离职移交" : message);
+                if (FlowEngine.taskService().transfer(task.getId(), params)) {
+                    success++;
+                } else {
+                    failed++;
+                }
+                instanceIds.add(task.getInstanceId());
+                resetTaskIds.add(task.getId());
+            } catch (Exception e) {
+                failed++;
+                log.warn("离职移交单条失败 taskId={} from={} to={}", task.getId(), fromUserId, toUserId, e);
+            }
+        }
+        for (Long instanceId : instanceIds) {
+            timeoutTaskSyncer.syncByInstanceAsync(instanceId, resetTaskIds);
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("total", tasks.size());
+        result.put("success", success);
+        result.put("failed", failed);
+        result.put("instanceCount", instanceIds.size());
         return result;
     }
 
