@@ -81,6 +81,10 @@ public class FlowNoHandlerTaskHandler {
                     continue;
                 }
                 Node node = ccTaskHandler.findNode(task);
+                if (FlowNodeExtUtil.isSubflowNode(node)) {
+                    // R2-18 子流程节点：任务没有办理人是设计态（等子流程办结由系统回推），不能按无人节点处置
+                    continue;
+                }
                 if (isAssignToOrgAdmin(node)) {
                     assignOrgAdmin(task);
                     // 交给管理员后任务必须停在本节点，不能继续往下走

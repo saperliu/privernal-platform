@@ -23,6 +23,7 @@ import com.privernal.common.datascope.context.OrganizationContextHolder;
 import com.privernal.common.security.service.SecurityUtils;
 import com.privernal.flow.context.FlowContextHolder;
 import com.privernal.flow.domain.FlowFormBind;
+import com.privernal.flow.domain.FlowSubflowRel;
 import com.privernal.flow.dto.FlowInstanceStatusDTO;
 import com.privernal.flow.dto.FlowNodeInfoDTO;
 import com.privernal.flow.dto.FlowStartDTO;
@@ -31,14 +32,19 @@ import com.privernal.flow.handler.FlowCcTaskHandler;
 import com.privernal.flow.handler.FlowNoHandlerTaskHandler;
 import com.privernal.flow.handler.FlowTimeoutTaskSyncer;
 import com.privernal.flow.mapper.FlowQueryMapper;
+import com.privernal.flow.mapper.FlowSubflowRelMapper;
 import com.privernal.flow.listener.FlowEventPublisher;
+import com.privernal.flow.notice.FlowNoticeMessage;
+import com.privernal.flow.notice.FlowNoticeSender;
 import com.privernal.flow.dto.FlowFormVersionDTO;
 import com.privernal.flow.service.IFlowFormService;
 import com.privernal.flow.service.IFlowFormVersionService;
 import com.privernal.flow.service.IFlowInstanceService;
 import com.privernal.flow.service.IFlowUserResolveService;
+import com.privernal.flow.utils.FlowNodeExtUtil;
 import com.privernal.dynamic.feign.RemoteDynamicService;
 import com.baomidou.dynamic.datasource.annotation.DS;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.dromara.warm.flow.core.FlowEngine;
 import org.dromara.warm.flow.core.dto.FlowParams;
@@ -47,13 +53,16 @@ import org.dromara.warm.flow.core.entity.HisTask;
 import org.dromara.warm.flow.core.entity.Instance;
 import org.dromara.warm.flow.core.entity.Node;
 import org.dromara.warm.flow.core.entity.Task;
+import org.dromara.warm.flow.core.enums.SkipType;
 import org.dromara.warm.flow.orm.entity.FlowInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -86,8 +95,21 @@ public class FlowInstanceServiceImpl implements IFlowInstanceService {
     /** 节点类型：开始节点（退回到发起节点时业务数据回到草稿态） */
     private static final int NODE_TYPE_START = 0;
 
+    /** R2-18：子流程嵌套深度上限（防 A→B→A 引用环与失控递归，链上任一层超限即拒绝发起） */
+    private static final int MAX_SUBFLOW_DEPTH = 3;
+
+    /** R2-18：子流程实例合成 businessId 前缀（不走动态表单绑定/状态回写链路） */
+    private static final String SUBFLOW_BUSINESS_PREFIX = "subflow-";
+
     @Autowired
     private FlowQueryMapper flowQueryMapper;
+
+    @Autowired
+    private FlowSubflowRelMapper flowSubflowRelMapper;
+
+    /** 子流程通知发送器：调度/系统线程可能没有实现，ObjectProvider 容忍缺省 */
+    @Autowired
+    private ObjectProvider<FlowNoticeSender> noticeSenderProvider;
 
     @Autowired
     private IFlowFormService flowFormService;
@@ -186,6 +208,12 @@ public class FlowInstanceServiceImpl implements IFlowInstanceService {
                 syncBusinessStatus(instance.getId());
             } catch (Exception e) {
                 log.warn("发起后抄送节点自动跳过失败 instanceId={}", instance.getId(), e);
+            }
+            // R2-18：发起后第一节点若为子流程节点，立即发起子流程（失败不阻断发起主链路）
+            try {
+                launchSubflowTasks(instance.getId());
+            } catch (Exception e) {
+                log.warn("发起后子流程节点处理失败 instanceId={}", instance.getId(), e);
             }
             // 发起即注册首节点超时任务（§10.2 调用点）：此前仅转办/委派/加签/减签等动作
             // 触发注册，正常流转与首节点的超时只能靠每日兜底扫描，处置严重滞后
@@ -332,6 +360,8 @@ public class FlowInstanceServiceImpl implements IFlowInstanceService {
         FlowParams params = FlowParams.build()
                 .handler(StringUtils.isEmpty(handler) ? SecurityUtils.getUserId() : handler)
                 .message(StringUtils.isEmpty(message) ? "终止流程" : message);
+        // R2-18：父流程终止时级联终止其发起中的子流程，避免子流程成为无主实例继续流转
+        cascadeTerminateSubflows(instanceId, params.getHandler());
         FlowEngine.taskService().terminationByInsId(instanceId, params);
         syncBusinessStatus(instanceId);
         Instance latest = FlowEngine.insService().getById(instanceId);
@@ -354,6 +384,8 @@ public class FlowInstanceServiceImpl implements IFlowInstanceService {
                 .handler(userId)
                 .message(StringUtils.isEmpty(message) ? "撤销流程" : message);
         FlowEngine.taskService().revoke(instanceId, params);
+        // R2-18：父流程撤销同样级联终止发起中的子流程
+        cascadeTerminateSubflows(instanceId, userId);
         syncBusinessStatus(instanceId);
         Instance latest = FlowEngine.insService().getById(instanceId);
         flowEventPublisher.publishRevoke(latest, params.getMessage());
@@ -535,6 +567,8 @@ public class FlowInstanceServiceImpl implements IFlowInstanceService {
         startDTO.setBusinessId(businessId);
         startDTO.setHandler(handler);
         FlowInstanceStatusDTO result = start(startDTO);
+        // R2-18：重启的是子流程实例时，把父子关系指到新实例，父流程继续等待新子流程
+        rebindSubflowRel(instanceId, result.getInstanceId());
         flowEventPublisher.publishRestart(FlowEngine.insService().getById(result.getInstanceId()));
         return result;
     }
@@ -589,5 +623,331 @@ public class FlowInstanceServiceImpl implements IFlowInstanceService {
             }
         }
         return result;
+    }
+
+    // ==================== R2-18 子流程桥接 ====================
+
+    /**
+     * 发起本实例当前停留的子流程节点（ext.nodeKind=subflow）对应的子流程实例。
+     * 幂等：同一父任务只发一次（先查关系行，uk_parent_task 唯一约束兜底并发）；
+     * 单节点失败只记日志并通知父流程发起人，不阻断主流程。
+     */
+    @Override
+    @DS("master")
+    public void launchSubflowTasks(Long instanceId) {
+        if (instanceId == null) {
+            return;
+        }
+        List<Task> tasks = FlowEngine.taskService().getByInsId(instanceId);
+        if (tasks == null || tasks.isEmpty()) {
+            return;
+        }
+        for (Task task : tasks) {
+            try {
+                Node node = ccTaskHandler.findNode(task);
+                if (!FlowNodeExtUtil.isSubflowNode(node)) {
+                    continue;
+                }
+                String subflowCode = FlowNodeExtUtil.parseExt(node.getExt()).get(FlowNodeExtUtil.KEY_SUBFLOW_CODE);
+                if (StringUtils.isEmpty(subflowCode)) {
+                    log.warn("子流程节点未配置目标流程编码，任务停留等待人工处理 taskId={} nodeCode={}",
+                            task.getId(), task.getNodeCode());
+                    continue;
+                }
+                Long exists = flowSubflowRelMapper.selectCount(new LambdaQueryWrapper<FlowSubflowRel>()
+                        .eq(FlowSubflowRel::getParentTaskId, String.valueOf(task.getId())));
+                if (exists != null && exists > 0) {
+                    continue;
+                }
+                launchSubflowForTask(task, subflowCode);
+            } catch (Exception e) {
+                log.error("子流程发起失败，父任务停留等待 taskId={} nodeCode={}", task.getId(), task.getNodeCode(), e);
+            }
+        }
+    }
+
+    /**
+     * 单个父任务的子流程发起：校验已发布/防环 → 先插关系行 → 引擎发起 → 回填子实例 id；
+     * 发起失败删行允许下次重试，并通知父流程发起人。
+     */
+    private void launchSubflowForTask(Task task, String subflowCode) {
+        Long parentInstanceId = task.getInstanceId();
+        Instance parent = FlowEngine.insService().getById(parentInstanceId);
+        if (parent == null) {
+            return;
+        }
+        if (createsSubflowCycle(subflowCode, parentInstanceId, 0)) {
+            log.error("子流程发起被拒绝（检测到流程引用环或超深嵌套） parentInstanceId={} subflowCode={}",
+                    parentInstanceId, subflowCode);
+            notifyParentInitiator(parent, subflowCode,
+                    "子流程「" + subflowCode + "」发起被拒绝：检测到流程引用环或嵌套超过 " + MAX_SUBFLOW_DEPTH + " 层");
+            return;
+        }
+        Definition childDef = FlowEngine.defService().getPublishByFlowCode(subflowCode);
+        if (childDef == null) {
+            log.error("子流程没有已发布版本 parentInstanceId={} subflowCode={}", parentInstanceId, subflowCode);
+            notifyParentInitiator(parent, subflowCode,
+                    "子流程「" + subflowCode + "」没有已发布版本，父任务停留等待，请先发布子流程");
+            return;
+        }
+        // 先插关系行再发起：唯一约束兜底并发双发；实体字段显式赋值（调度线程无登录态，自动填充不生效）
+        String initiator = StringUtils.isEmpty(parent.getCreateBy()) ? "system" : parent.getCreateBy();
+        FlowSubflowRel rel = new FlowSubflowRel();
+        rel.setParentInstanceId(String.valueOf(parentInstanceId));
+        rel.setParentTaskId(String.valueOf(task.getId()));
+        rel.setSubflowCode(subflowCode);
+        rel.setStatus(FlowSubflowRel.STATUS_LAUNCHED);
+        rel.setCreatedBy(initiator);
+        rel.setCreatedTime(new Date());
+        try {
+            flowSubflowRelMapper.insert(rel);
+        } catch (Exception e) {
+            log.warn("子流程关系行写入冲突（可能并发发起，放弃本次） parentTaskId={} subflowCode={}",
+                    task.getId(), subflowCode);
+            return;
+        }
+        Instance child;
+        try {
+            Map<String, Object> variables = parent.getVariableMap() == null ? new HashMap<>() : parent.getVariableMap();
+            FlowParams params = FlowParams.build()
+                    .flowCode(subflowCode)
+                    .handler(initiator)
+                    .variable(variables);
+            FlowContextHolder.FlowContext context = new FlowContextHolder.FlowContext();
+            context.setInitiatorId(initiator);
+            context.setVariables(variables);
+            FlowContextHolder.set(context);
+            try {
+                // 合成 businessId：子流程不经动态表单绑定解析与状态回写链路
+                child = FlowEngine.insService().start(SUBFLOW_BUSINESS_PREFIX + parentInstanceId + "-" + task.getId(), params);
+            } finally {
+                FlowContextHolder.clear();
+            }
+            rel.setChildInstanceId(String.valueOf(child.getId()));
+            flowSubflowRelMapper.updateById(rel);
+            log.info("子流程已发起 parentInstanceId={} parentTaskId={} childInstanceId={} subflowCode={}",
+                    parentInstanceId, task.getId(), child.getId(), subflowCode);
+        } catch (Exception e) {
+            flowSubflowRelMapper.deleteById(rel.getId());
+            log.error("子流程发起失败 parentInstanceId={} subflowCode={}", parentInstanceId, subflowCode, e);
+            notifyParentInitiator(parent, subflowCode,
+                    "子流程「" + subflowCode + "」发起失败：" + e.getMessage() + "，父任务停留等待");
+            return;
+        }
+        // 子流程首节点若为抄送/无人/子流程节点立即联动；子流程直接走完时回推父流程
+        try {
+            ccTaskHandler.autoSkipCcNodes(child.getId());
+            noHandlerTaskHandler.handleUnresolvedNodes(child.getId());
+            launchSubflowTasks(child.getId());
+            resumeSubflowParent(child.getId());
+        } catch (Exception e) {
+            log.warn("子流程发起后联动处理失败 childInstanceId={}", child.getId(), e);
+        }
+    }
+
+    /**
+     * 防环：沿父子关系链向上走，任一祖先实例的流程编码等于待发起的子流程编码即成环；
+     * 链长超过 {@link #MAX_SUBFLOW_DEPTH} 同样拒绝（失控递归保险）。
+     */
+    private boolean createsSubflowCycle(String subflowCode, Long parentInstanceId, int depth) {
+        Long cursor = parentInstanceId;
+        int level = depth;
+        while (cursor != null) {
+            if (level > MAX_SUBFLOW_DEPTH) {
+                return true;
+            }
+            Instance inst = FlowEngine.insService().getById(cursor);
+            if (inst == null) {
+                return false;
+            }
+            Definition def = FlowEngine.defService().getById(inst.getDefinitionId());
+            if (def != null && subflowCode.equals(def.getFlowCode())) {
+                return true;
+            }
+            List<FlowSubflowRel> rels = flowSubflowRelMapper.selectList(new LambdaQueryWrapper<FlowSubflowRel>()
+                    .eq(FlowSubflowRel::getChildInstanceId, String.valueOf(cursor)));
+            if (rels == null || rels.isEmpty()) {
+                return false;
+            }
+            cursor = Long.valueOf(rels.get(0).getParentInstanceId());
+            level++;
+        }
+        return false;
+    }
+
+    /**
+     * 本实例（作为子流程）结束后的父流程回推。
+     * 办结（通过/走完）→ 自动通过父任务流转并联动抄送/无人/下一级子流程/超时重签/状态回写；
+     * 终止/撤销/作废 → 记关系状态并通知父流程发起人（父任务保持等待，人工转办或终止兜底）。
+     */
+    @Override
+    @DS("master")
+    public void resumeSubflowParent(Long instanceId) {
+        if (instanceId == null) {
+            return;
+        }
+        try {
+            List<FlowSubflowRel> rels = flowSubflowRelMapper.selectList(new LambdaQueryWrapper<FlowSubflowRel>()
+                    .eq(FlowSubflowRel::getChildInstanceId, String.valueOf(instanceId)));
+            if (rels == null || rels.isEmpty()) {
+                return;
+            }
+            FlowSubflowRel rel = rels.get(0);
+            if (!FlowSubflowRel.STATUS_LAUNCHED.equals(rel.getStatus())) {
+                return;
+            }
+            Instance child = FlowEngine.insService().getById(instanceId);
+            String status = child == null ? null : child.getFlowStatus();
+            if (FLOW_STATUS_PASS.equals(status) || FLOW_STATUS_FINISHED.equals(status)) {
+                rel.setStatus(FlowSubflowRel.STATUS_DONE);
+                rel.setFinishedTime(new Date());
+                flowSubflowRelMapper.updateById(rel);
+                resumeParentTask(rel, child);
+            } else if (FLOW_STATUS_CANCEL.equals(status) || FLOW_STATUS_TERMINATE.equals(status)
+                    || FLOW_STATUS_NULLIFY.equals(status) || FLOW_STATUS_INVALID.equals(status)) {
+                rel.setStatus(FLOW_STATUS_CANCEL.equals(status)
+                        ? FlowSubflowRel.STATUS_CHILD_REVOKED : FlowSubflowRel.STATUS_CHILD_TERMINATED);
+                rel.setFinishedTime(new Date());
+                flowSubflowRelMapper.updateById(rel);
+                Instance parent = FlowEngine.insService().getById(Long.valueOf(rel.getParentInstanceId()));
+                if (parent != null) {
+                    String action = FLOW_STATUS_CANCEL.equals(status) ? "撤销" : "终止";
+                    notifyParentInitiator(parent, rel.getSubflowCode(),
+                            "子流程「" + resolveFlowName(child) + "」已" + action + "，父流程停留等待，请人工处理");
+                }
+            }
+        } catch (Exception e) {
+            log.error("子流程结束回推父流程失败 childInstanceId={}", instanceId, e);
+        }
+    }
+
+    /** 子流程办结后系统身份自动通过父任务；后续联动与手动通过（FlowTaskServiceImpl.approve）同口径 */
+    private void resumeParentTask(FlowSubflowRel rel, Instance child) {
+        Long parentTaskId = Long.valueOf(rel.getParentTaskId());
+        Task parentTask = FlowEngine.taskService().getById(parentTaskId);
+        if (parentTask == null) {
+            log.warn("子流程办结但父任务已不存在（父流程可能已被终止/办结） relId={} parentTaskId={}",
+                    rel.getId(), parentTaskId);
+            return;
+        }
+        Instance parent = FlowEngine.insService().getById(parentTask.getInstanceId());
+        String handler = parent == null || StringUtils.isEmpty(parent.getCreateBy())
+                ? "system" : parent.getCreateBy();
+        FlowParams params = FlowParams.build()
+                .ignore(true)
+                .handler(handler)
+                .skipType(SkipType.PASS.getKey())
+                .message("子流程「" + resolveFlowName(child) + "」办结，自动流转");
+        Instance afterSkip = FlowEngine.taskService().skip(parentTaskId, params);
+        if (afterSkip == null) {
+            return;
+        }
+        syncBusinessStatus(afterSkip.getId());
+        ccTaskHandler.autoSkipCcNodes(afterSkip.getId());
+        noHandlerTaskHandler.handleUnresolvedNodes(afterSkip.getId());
+        // 自动跳过可能推进流程结束，补一次状态回写（与 approve 口径一致）
+        syncBusinessStatus(afterSkip.getId());
+        // 父流程可能停到下一个子流程节点；父实例本身也可能是别人的子流程
+        launchSubflowTasks(afterSkip.getId());
+        resumeSubflowParent(afterSkip.getId());
+        timeoutTaskSyncer.syncByInstanceAsync(afterSkip.getId());
+    }
+
+    /** 父流程终止/撤销时级联终止其发起中的子流程，防止子流程成为无主实例继续流转 */
+    private void cascadeTerminateSubflows(Long parentInstanceId, String handler) {
+        try {
+            List<FlowSubflowRel> rels = flowSubflowRelMapper.selectList(new LambdaQueryWrapper<FlowSubflowRel>()
+                    .eq(FlowSubflowRel::getParentInstanceId, String.valueOf(parentInstanceId))
+                    .eq(FlowSubflowRel::getStatus, FlowSubflowRel.STATUS_LAUNCHED));
+            if (rels == null || rels.isEmpty()) {
+                return;
+            }
+            for (FlowSubflowRel rel : rels) {
+                if (StringUtils.isEmpty(rel.getChildInstanceId())) {
+                    continue;
+                }
+                try {
+                    Long childId = Long.valueOf(rel.getChildInstanceId());
+                    FlowParams params = FlowParams.build()
+                            .handler(StringUtils.isEmpty(handler) ? "system" : handler)
+                            .ignore(true)
+                            .message("父流程已结束，子流程级联终止");
+                    FlowEngine.taskService().terminationByInsId(childId, params);
+                    rel.setStatus(FlowSubflowRel.STATUS_CHILD_TERMINATED);
+                    rel.setFinishedTime(new Date());
+                    flowSubflowRelMapper.updateById(rel);
+                    log.warn("父流程已结束，级联终止子流程 parentInstanceId={} childInstanceId={}",
+                            parentInstanceId, childId);
+                } catch (Exception e) {
+                    log.error("级联终止子流程失败 childInstanceId={}", rel.getChildInstanceId(), e);
+                }
+            }
+        } catch (Exception e) {
+            log.error("级联终止子流程查询失败 parentInstanceId={}", parentInstanceId, e);
+        }
+    }
+
+    /** 重启子流程实例时把父子关系指到新实例（父流程继续等待新子流程） */
+    private void rebindSubflowRel(Long oldInstanceId, Long newInstanceId) {
+        try {
+            List<FlowSubflowRel> rels = flowSubflowRelMapper.selectList(new LambdaQueryWrapper<FlowSubflowRel>()
+                    .eq(FlowSubflowRel::getChildInstanceId, String.valueOf(oldInstanceId))
+                    .eq(FlowSubflowRel::getStatus, FlowSubflowRel.STATUS_LAUNCHED));
+            if (rels == null) {
+                return;
+            }
+            for (FlowSubflowRel rel : rels) {
+                rel.setChildInstanceId(String.valueOf(newInstanceId));
+                rel.setStatus(FlowSubflowRel.STATUS_LAUNCHED);
+                flowSubflowRelMapper.updateById(rel);
+                log.info("子流程实例重启，父子关系已指向新实例 oldInstanceId={} newInstanceId={}",
+                        oldInstanceId, newInstanceId);
+            }
+        } catch (Exception e) {
+            log.error("重绑子流程关系失败 oldInstanceId={} newInstanceId={}", oldInstanceId, newInstanceId, e);
+        }
+    }
+
+    @Override
+    @DS("master")
+    public List<FlowSubflowRel> listSubflowRels(Long instanceId) {
+        if (instanceId == null) {
+            return new ArrayList<>();
+        }
+        List<FlowSubflowRel> rels = flowSubflowRelMapper.selectList(new LambdaQueryWrapper<FlowSubflowRel>()
+                .eq(FlowSubflowRel::getParentInstanceId, String.valueOf(instanceId))
+                .orderByAsc(FlowSubflowRel::getCreatedTime));
+        return rels == null ? new ArrayList<>() : rels;
+    }
+
+    private void notifyParentInitiator(Instance parent, String subflowCode, String content) {
+        try {
+            FlowNoticeSender sender = noticeSenderProvider.getIfAvailable();
+            if (sender == null || StringUtils.isEmpty(parent.getCreateBy())) {
+                return;
+            }
+            FlowNoticeMessage notice = new FlowNoticeMessage();
+            notice.setInstanceId(parent.getId());
+            notice.setBusinessId(parent.getBusinessId());
+            notice.setFlowName(parent.getFlowName());
+            notice.setTitle("子流程提醒：" + (StringUtils.isEmpty(parent.getFlowName()) ? "流程" : parent.getFlowName()));
+            notice.setContent(content);
+            notice.setUserIds(List.of(parent.getCreateBy()));
+            sender.send(notice);
+        } catch (Exception e) {
+            log.warn("子流程通知父流程发起人失败 parentInstanceId={}", parent.getId(), e);
+        }
+    }
+
+    private String resolveFlowName(Instance instance) {
+        if (instance == null) {
+            return "子流程";
+        }
+        try {
+            Definition def = FlowEngine.defService().getById(instance.getDefinitionId());
+            return def == null || StringUtils.isEmpty(def.getFlowName()) ? "子流程" : def.getFlowName();
+        } catch (Exception e) {
+            return "子流程";
+        }
     }
 }

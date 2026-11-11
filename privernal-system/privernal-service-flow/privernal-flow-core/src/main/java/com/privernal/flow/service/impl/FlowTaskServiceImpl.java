@@ -132,6 +132,10 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
     @Autowired
     private cn.dev33.satoken.dao.SaTokenDao saTokenDao;
 
+    /** R2-18 票签并发锁：原子 setIfAbsent（RedisService），防双击记两票/并发双过 */
+    @Autowired
+    private com.privernal.common.redis.service.RedisService redisService;
+
     @Autowired
     private com.privernal.flow.mapper.FlowTimeoutTaskMapper flowTimeoutTaskMapper;
 
@@ -196,6 +200,9 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
             if (FLOW_STATUS_PASS.equals(latest.getFlowStatus()) || FLOW_STATUS_FINISHED.equals(latest.getFlowStatus())) {
                 flowEventPublisher.publishComplete(latest);
             }
+            // R2-18 子流程桥接：本实例若停到子流程节点则发起子流程；本实例若为子流程且已结束则回推父流程
+            flowInstanceService.launchSubflowTasks(latest.getId());
+            flowInstanceService.resumeSubflowParent(latest.getId());
             return instance;
         } finally {
             FlowContextHolder.clear();
@@ -252,6 +259,24 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
     }
 
     /**
+     * 数量票签办理互斥锁（code-audit L1）：读票数→判定→记票/跳转三步非原子，
+     * 两人同时通过可能各记一票都不流转（节点卡死），同一人双击会记两票。
+     * 锁为任务粒度、原子 setIfAbsent（get+set 非原子挡不住并发窗口），拿不到锁直接拒绝；
+     * 成功/异常路径都释放，锁 30s 自动过期兜底（进程崩溃不至于永久卡办理）。
+     */
+    private void lockVoteTask(Long taskId) {
+        String lockKey = "FLOW_VOTE_" + taskId;
+        boolean locked = redisService.setCacheObjectIfAbsent(lockKey, "1", 30L, java.util.concurrent.TimeUnit.SECONDS);
+        if (!locked) {
+            throw new ServiceException("该任务正在办理中，请稍后再试");
+        }
+    }
+
+    private void unlockVoteTask(Long taskId) {
+        redisService.deleteObject("FLOW_VOTE_" + taskId);
+    }
+
+    /**
      * 带绝对数量票签的通过跳转
      * <p>
      * 设计器「票签-固定通过人数」保存为 ext.voteType=count + ext.voteCount=N（warm-flow 引擎
@@ -278,23 +303,51 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
             // 未配置票数或仅剩最后一位办理人：由当前人决定走向
             return FlowEngine.taskService().skip(taskId, params);
         }
-        List<HisTask> doneList = FlowEngine.hisTaskService()
-                .listByTaskIdAndCooperateTypes(taskId, CooperateType.VOTE.getKey());
-        long passVotes = doneList == null ? 0 : doneList.stream()
-                .filter(his -> Objects.equals(his.getSkipType(), SkipType.PASS.getKey())).count();
-        if (passVotes + 1 >= need) {
-            // 达到通过票数，本次办理完成整个节点并跳转到下一节点
-            return FlowEngine.taskService().skip(taskId, params);
+        lockVoteTask(taskId);
+        try {
+            // 锁内判重：节点已被并发请求办结则拒绝再次办理。任务完成后 flow_task 行不删（引擎行为），
+            // 不能按任务行判存在性；完整通过的历史记录 cooperate_type=审批（记票是 cooperate_type=票签），
+            // 已有审批记录再 skip 会产生重复 PASS（audit L1 同族双过）
+            if (hasApprovalRecord(taskId)) {
+                throw new ServiceException("该任务已被其他办理人办结，请刷新待办");
+            }
+            List<HisTask> doneList = FlowEngine.hisTaskService()
+                    .listByTaskIdAndCooperateTypes(taskId, CooperateType.VOTE.getKey());
+            long passVotes = doneList == null ? 0 : doneList.stream()
+                    .filter(his -> Objects.equals(his.getSkipType(), SkipType.PASS.getKey())).count();
+            if (passVotes + 1 >= need) {
+                // 达到通过票数，本次办理完成整个节点并跳转到下一节点
+                return FlowEngine.taskService().skip(taskId, params);
+            }
+            // 未达票数：记录一票，移除当前办理人，任务继续等待投票
+            User todoUser = lockedTodoList(taskId).stream()
+                    .filter(user -> Objects.equals(user.getProcessedBy(), params.getHandler()))
+                    .findFirst().orElseThrow(() -> new ServiceException("当前用户无该任务办理权限"));
+            HisTask hisTask = FlowEngine.hisTaskService().setSignHisTask(task, params, "0", true);
+            FlowEngine.hisTaskService().save(hisTask);
+            FlowEngine.userService().removeById(todoUser.getId());
+            syncTimeoutAfter(taskId);
+            return FlowEngine.insService().getById(task.getInstanceId());
+        } finally {
+            unlockVoteTask(taskId);
         }
-        // 未达票数：记录一票，移除当前办理人，任务继续等待投票
-        User todoUser = todoList.stream()
-                .filter(user -> Objects.equals(user.getProcessedBy(), params.getHandler()))
-                .findFirst().orElseThrow(() -> new ServiceException("当前用户无该任务办理权限"));
-        HisTask hisTask = FlowEngine.hisTaskService().setSignHisTask(task, params, "0", true);
-        FlowEngine.hisTaskService().save(hisTask);
-        FlowEngine.userService().removeById(todoUser.getId());
-        syncTimeoutAfter(taskId);
-        return FlowEngine.insService().getById(task.getInstanceId());
+    }
+
+    /**
+     * 该任务是否已有「审批」类型的完整办理记录（区别于票签记票的「票签」类型）：
+     * 有即节点已被办结，任何后续办理都应拒绝
+     */
+    private boolean hasApprovalRecord(Long taskId) {
+        List<HisTask> approvalDone = FlowEngine.hisTaskService()
+                .listByTaskIdAndCooperateTypes(taskId, CooperateType.APPROVAL.getKey());
+        return approvalDone != null && !approvalDone.isEmpty();
+    }
+
+    /** 锁内重读任务当前办理人（并发下另一请求可能已被移除办理人） */
+    private List<User> lockedTodoList(Long taskId) {
+        List<User> todoList = FlowEngine.userService().listByAssociatedAndTypes(taskId,
+                UserType.APPROVAL.getKey(), UserType.TRANSFER.getKey(), UserType.DEPUTE.getKey());
+        return todoList == null ? new ArrayList<>() : todoList;
     }
 
     @Override
@@ -352,6 +405,8 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
             // 驳回后重签本实例超时任务（§10.2 调用点）
             syncTimeoutAfter(handleDTO.getTaskId(), true);
             flowEventPublisher.publishReject(instance, instance.getNodeCode());
+            // R2-18 子流程桥接：驳回落点也可能是子流程节点（发起失败不阻断驳回主链路）
+            flowInstanceService.launchSubflowTasks(instance.getId());
             return instance;
         } finally {
             FlowContextHolder.clear();
@@ -384,30 +439,39 @@ public class FlowTaskServiceImpl implements IFlowTaskService {
             // 未配置驳回票数或仅剩最后一位办理人：由当前人决定走向
             return null;
         }
-        List<HisTask> doneList = FlowEngine.hisTaskService()
-                .listByTaskIdAndCooperateTypes(taskId, CooperateType.VOTE.getKey());
-        long rejectVotes = doneList == null ? 0 : doneList.stream()
-                .filter(his -> Objects.equals(his.getSkipType(), SkipType.REJECT.getKey())).count();
-        if (rejectVotes + 1 >= need) {
-            String anyNodeSkip = node == null ? null : node.getAnyNodeSkip();
-            if (StringUtils.isEmpty(anyNodeSkip)) {
-                // 未配置驳回落点：退回原生路由（保持 rejectType 语义）
-                return null;
+        lockVoteTask(taskId);
+        try {
+            // 锁内判重（同 skipWithCountVote）：已有审批记录即节点已走完
+            if (hasApprovalRecord(taskId)) {
+                throw new ServiceException("该任务已被其他办理人办结，请刷新待办");
             }
-            return FlowEngine.taskService().skip(taskId,
-                    buildParams(handleDTO).skipType(SkipType.REJECT.getKey())
-                            .nodeCode(anyNodeSkip).variable(enrichGatewayVars(handleDTO.getVariable(), context)));
+            List<HisTask> doneList = FlowEngine.hisTaskService()
+                    .listByTaskIdAndCooperateTypes(taskId, CooperateType.VOTE.getKey());
+            long rejectVotes = doneList == null ? 0 : doneList.stream()
+                    .filter(his -> Objects.equals(his.getSkipType(), SkipType.REJECT.getKey())).count();
+            if (rejectVotes + 1 >= need) {
+                String anyNodeSkip = node == null ? null : node.getAnyNodeSkip();
+                if (StringUtils.isEmpty(anyNodeSkip)) {
+                    // 未配置驳回落点：退回原生路由（保持 rejectType 语义）
+                    return null;
+                }
+                return FlowEngine.taskService().skip(taskId,
+                        buildParams(handleDTO).skipType(SkipType.REJECT.getKey())
+                                .nodeCode(anyNodeSkip).variable(enrichGatewayVars(handleDTO.getVariable(), context)));
+            }
+            // 未达驳回票数：记录一票驳回，移除当前办理人，任务继续等待投票
+            FlowParams params = buildParams(handleDTO).skipType(SkipType.REJECT.getKey());
+            User todoUser = lockedTodoList(taskId).stream()
+                    .filter(user -> Objects.equals(user.getProcessedBy(), params.getHandler()))
+                    .findFirst().orElseThrow(() -> new ServiceException("当前用户无该任务办理权限"));
+            HisTask hisTask = FlowEngine.hisTaskService().setSignHisTask(task, params, "0", false);
+            FlowEngine.hisTaskService().save(hisTask);
+            FlowEngine.userService().removeById(todoUser.getId());
+            syncTimeoutAfter(taskId);
+            return FlowEngine.insService().getById(task.getInstanceId());
+        } finally {
+            unlockVoteTask(taskId);
         }
-        // 未达驳回票数：记录一票驳回，移除当前办理人，任务继续等待投票
-        FlowParams params = buildParams(handleDTO).skipType(SkipType.REJECT.getKey());
-        User todoUser = todoList.stream()
-                .filter(user -> Objects.equals(user.getProcessedBy(), params.getHandler()))
-                .findFirst().orElseThrow(() -> new ServiceException("当前用户无该任务办理权限"));
-        HisTask hisTask = FlowEngine.hisTaskService().setSignHisTask(task, params, "0", false);
-        FlowEngine.hisTaskService().save(hisTask);
-        FlowEngine.userService().removeById(todoUser.getId());
-        syncTimeoutAfter(taskId);
-        return FlowEngine.insService().getById(task.getInstanceId());
     }
 
     @Override

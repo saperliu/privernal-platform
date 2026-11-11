@@ -214,6 +214,84 @@ public class DynamicDatasetServiceImpl implements IDynamicDatasetService {
         return dataset;
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public JSONArray listJoinOptions(String tableCode) {
+        com.privernal.dynamic.dbs.domain.DynamicForm form = tableResolver.resolveForm(tableCode);
+        if (form == null) {
+            throw new ServiceException("动态表不存在：" + tableCode);
+        }
+        JSONArray options = new JSONArray();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        // 子表关联：sub-table 节点本身就是登记，物理表与建表链同一来源（resolveSubTableJoin 同口径）
+        for (com.privernal.dynamic.dbs.service.DynamicSubTableService.SubTableDef def
+                : dynamicSubTableService.resolveSubTables(form.getTableCode(), form.getMetaData())) {
+            if (!seen.add("subTable:" + def.getField())) {
+                continue;
+            }
+            JSONObject option = new JSONObject();
+            option.put("type", "subTable");
+            option.put("field", def.getField());
+            option.put("label", StringUtils.isNotBlank(def.getLabel()) ? def.getLabel() : def.getField());
+            options.add(option);
+        }
+        // 引用关联：元数据声明 + dynamic_form_relation 登记双口径，
+        // 缺一边的（声明了没登记 / 登记了元数据没挂 relation）都不可保存成功，不进候选
+        java.util.Map<String, String> decls = new java.util.LinkedHashMap<>();
+        collectRelationDecls(form.getMetaData(), decls);
+        for (java.util.Map.Entry<String, String> decl : decls.entrySet()) {
+            String targetFormCode = decl.getValue();
+            com.privernal.dynamic.dbs.domain.DynamicForm targetForm = tableResolver.resolveForm(targetFormCode);
+            if (targetForm == null) {
+                continue;
+            }
+            String targetPhysical = targetForm.getTableCode();
+            if (dynamicFormRelationService.selectByReferencer(form.getTableCode(), targetPhysical).isEmpty()) {
+                continue;
+            }
+            if (!seen.add("relation:" + decl.getKey() + ":" + targetPhysical)) {
+                continue;
+            }
+            JSONObject option = new JSONObject();
+            option.put("type", "relation");
+            option.put("field", decl.getKey());
+            option.put("label", StringUtils.isNotBlank(targetForm.getTableName())
+                    ? targetForm.getTableName() : targetPhysical);
+            option.put("targetTableCode", targetFormCode);
+            options.add(option);
+        }
+        return options;
+    }
+
+    /**
+     * 递归收集主表元数据里的 relation 声明（field → relation.formCode），
+     * 口径与 metaDataDeclaresRelation 一致（props.relation 优先，遗留 componentProps.relation 兜底）；
+     * 同一字段多处声明时取第一处——保存链 resolveRelationJoin 也是按字段逐个判定，不允许多义。
+     */
+    private void collectRelationDecls(Object node, java.util.Map<String, String> out) {
+        if (node instanceof JSONObject obj) {
+            String field = obj.getString("field");
+            JSONObject relation = obj.getJSONObject("props") instanceof JSONObject props
+                    ? props.getJSONObject("relation") : null;
+            if (relation == null && obj.getJSONObject("componentProps") instanceof JSONObject cp) {
+                relation = cp.getJSONObject("relation");
+            }
+            if (StringUtils.isNotBlank(field) && relation != null
+                    && StringUtils.isNotBlank(relation.getString("formCode"))) {
+                out.putIfAbsent(field, relation.getString("formCode"));
+            }
+            for (Object value : obj.values()) {
+                collectRelationDecls(value, out);
+            }
+            return;
+        }
+        if (node instanceof JSONArray array) {
+            for (Object item : array) {
+                collectRelationDecls(item, out);
+            }
+        }
+    }
+
     /**
      * 白名单关联解析：subTable=主表元数据里的 sub-table 节点（物理表=主表编码_字段编码，
      * ON=parent_id）；relation=dynamic_form_relation 已登记关系且主表该字段节点的
@@ -221,8 +299,7 @@ public class DynamicDatasetServiceImpl implements IDynamicDatasetService {
      * 与主表列撞名直接拒绝——SQL 里没有歧义引用的生存空间。
      */
     private JSONArray resolveJoinMeta(com.privernal.dynamic.dbs.domain.DynamicForm mainForm,
-                                      JSONObject mainSnapshot, JSONArray joins) {
-        if (joins.size() > MAX_JOINS) {
+                                      JSONObject mainSnapshot, JSONArray joins) {        if (joins.size() > MAX_JOINS) {
             throw new ServiceException("一次问数最多挂 " + MAX_JOINS + " 个关联，请收窄口径");
         }
         JSONArray meta = new JSONArray();

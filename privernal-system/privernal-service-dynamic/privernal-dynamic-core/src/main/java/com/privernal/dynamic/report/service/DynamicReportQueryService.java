@@ -1268,6 +1268,22 @@ public class DynamicReportQueryService {
                         ? column.getString("dataType") : "text");
             }
         }
+        // 关联列并入白名单（R2-12）：joins 段的 columns 是服务端在数据集保存时按登记关系
+        // 落定的关联面，与 buildFromClause 的 JOIN 同源——不并入的话 JOIN 白拼了，
+        // 图表选关联列会报「不在数据集列快照中」，M3-2 的关联统计只有壳没有列
+        JSONArray joinArray = snapshot.getJSONArray("joins");
+        for (int i = 0; joinArray != null && i < joinArray.size(); i++) {
+            JSONObject join = joinArray.getJSONObject(i);
+            JSONArray joinColumns = join == null ? null : join.getJSONArray("columns");
+            for (int c = 0; joinColumns != null && c < joinColumns.size(); c++) {
+                JSONObject column = joinColumns.getJSONObject(c);
+                String fieldCode = column.getString("fieldCode");
+                if (StringUtils.isNotBlank(fieldCode)) {
+                    columnTypes.put(fieldCode, StringUtils.isNotBlank(column.getString("dataType"))
+                            ? column.getString("dataType") : "text");
+                }
+            }
+        }
         return columnTypes;
     }
 }

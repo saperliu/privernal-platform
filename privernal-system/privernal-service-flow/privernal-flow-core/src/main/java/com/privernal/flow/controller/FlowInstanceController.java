@@ -22,6 +22,7 @@ import com.privernal.common.security.annotation.PreAuthorize;
 import com.privernal.common.web.controller.BaseController;
 import com.privernal.common.web.domain.CommonResult;
 import com.privernal.common.web.domain.PageListDTO;
+import com.privernal.flow.domain.FlowSubflowRel;
 import com.privernal.flow.dto.FlowInstanceStatusDTO;
 import com.privernal.flow.dto.FlowNodeInfoDTO;
 import com.privernal.flow.dto.FlowRestartDTO;
@@ -179,5 +180,14 @@ public class FlowInstanceController extends BaseController {
     @GetMapping("/nodes/{instanceId}")
     public CommonResult<List<FlowNodeInfoDTO>> getInstanceNodes(@PathVariable("instanceId") Long instanceId) {
         return CommonResult.ok(flowInstanceService.getInstanceNodes(instanceId));
+    }
+
+    /**
+     * 子流程关系列表（R2-18）：实例记录页在子流程节点上展示子实例链接与状态（登录态即可查，同 record 口径）
+     */
+    @Operation(summary = "实例的子流程关系列表")
+    @GetMapping("/subflow-rels/{instanceId}")
+    public CommonResult<List<FlowSubflowRel>> listSubflowRels(@PathVariable("instanceId") Long instanceId) {
+        return CommonResult.ok(flowInstanceService.listSubflowRels(instanceId));
     }
 }

@@ -17,6 +17,7 @@
 package com.privernal.dynamic.dbs.mapper;
 
 import com.privernal.common.mybatis.mapper.PrivernalMapper;
+import com.privernal.common.datascope.annotation.IgnoreDataScope;
 import com.privernal.dynamic.dbs.domain.DynamicFormRelation;
 import com.baomidou.mybatisplus.annotation.InterceptorIgnore;
 import org.apache.ibatis.annotations.Param;
@@ -24,8 +25,15 @@ import org.apache.ibatis.annotations.Param;
 /**
  * 动态表单关联引用注册 Mapper
  * <p>
- * 不加 {@code @PrivernalDataScope}：关联引用是表单配置元信息，读取授权要覆盖「有引用方表单权限但非创建人」
- * 的业务用户，按部门/本人数据范围过滤会让关联下拉恒为空；组织隔离由拦截器自动生效。
+ * 加 {@code @IgnoreDataScope}（类级）：关联引用是表单配置元信息，不是行级业务数据，
+ * 读取授权要覆盖「有引用方表单权限但非创建人」的业务用户，按部门/本人数据范围过滤会让
+ * 关联下拉恒为空；组织隔离由 MP 组织拦截器自动生效。
+ * <p>
+ * 这不是可选项——数据范围切点拦 {@code PrivernalMapper+} 的全部执行，含 BaseMapper.selectList
+ * 这类继承方法：类上没有 {@code @PrivernalDataScope} 的 mapper 会被兜底改写成 {@code WHERE 1 = 2}，
+ * 且 wrapper 的参数占位符残留在 ParameterMapping 里与改写后的 SQL 失配，执行直接报
+ * 「Error setting non null for parameter」（2026-11-11 joinOptions 实测坐实；关联下拉、
+ * 关联统计保存链、报表 lookup 授权回查三个调用方同受影响）。
  * <p>
  * SQL 在 XML（resources/mapper/dynamic/DynamicFormRelationMapper.xml）：deleted_time 含
  * MySQL/SQLite 方言差异，走 privernal.dialect 片段；{@code @InterceptorIgnore} 标注在接口方法上
@@ -33,6 +41,7 @@ import org.apache.ibatis.annotations.Param;
  *
  * @author saperliu
  */
+@IgnoreDataScope
 public interface DynamicFormRelationMapper extends PrivernalMapper<DynamicFormRelation> {
 
     /**

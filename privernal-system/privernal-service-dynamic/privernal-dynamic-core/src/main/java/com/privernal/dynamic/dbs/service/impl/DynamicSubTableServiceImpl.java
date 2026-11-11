@@ -169,30 +169,32 @@ public class DynamicSubTableServiceImpl implements DynamicSubTableService {
             Map<String, Object> record = new LinkedHashMap<>();
             record.put("id", IdWorker.get32UUID());
             record.put("parent_id", parentId);
+            // 两遍写入：设计器原始编码键（与物理列名不同，可含点号/驼峰）优先；
+            // 回显展开补出的下划线/驼峰别名键（键名==物理列名）只补缺不覆盖。
+            // 否则编辑回显行里 sw.on=false 会被后端展开的 sw_on="1" 别名按遍历序覆盖，
+            // 开关关闭态存成开启（5.10 子表 switch 往返丢值的写侧根因之一）
             for (Map.Entry<String, Object> entry : row.entrySet()) {
                 String column = toDbColumn(entry.getKey());
                 if ("id".equalsIgnoreCase(entry.getKey()) || "parent_id".equals(column)) {
                     // 行数据以新 ID 重建，忽略提交中携带的行 id/parent_id
                     continue;
                 }
-                if (!"id".equalsIgnoreCase(column) && !"parent_id".equals(column) && !existingColumns.contains(column)) {
-                    // 未知列（回显别名等）剔除，仅记录
-                    log.debug("剔除子表行未知列：table={}, column={}", childTable, column);
+                if (column.equals(entry.getKey())) {
+                    // 物理列名形态的键放第二遍
                     continue;
                 }
-                if (JsonValueCodec.isShadowColumn(column)) {
-                    // 影子列由数据库生成，赋值会报错
+                putRowValue(record, column, entry.getValue(), childTable, existingColumns);
+            }
+            for (Map.Entry<String, Object> entry : row.entrySet()) {
+                String column = toDbColumn(entry.getKey());
+                if ("id".equalsIgnoreCase(entry.getKey()) || "parent_id".equals(column)) {
                     continue;
                 }
-                Object value = entry.getValue();
-                if (value instanceof Map || value instanceof Collection) {
-                    // 嵌套结构（如行内子表）序列化为 JSON 文本，避免 Java 对象直接写文本列；
-                    // 主表开关打开时子表同步走统一信封，保证读写协议一致
-                    value = ShadowColumnSupport.isJsonProtocolEnabled()
-                            ? JsonValueCodec.wrap(value)
-                            : com.alibaba.fastjson2.JSON.toJSONString(value);
+                if (!column.equals(entry.getKey())) {
+                    // 原始编码键已在第一遍处理
+                    continue;
                 }
-                record.put(column, value);
+                putRowValue(record, column, entry.getValue(), childTable, existingColumns);
             }
             record.put("created_time", now);
             if (userId != null && !userId.isEmpty()) {
@@ -461,6 +463,32 @@ public class DynamicSubTableServiceImpl implements DynamicSubTableService {
         String column = FormTransferTable.toDbColumnName(field);
         assertValidIdentifier(column);
         return column;
+    }
+
+    /**
+     * 行值落列：未知列（回显别名等）剔除、影子列跳过、嵌套结构序列化 JSON；
+     * 同列已有值（原始编码键先行）时不覆盖
+     */
+    private void putRowValue(Map<String, Object> record, String column, Object rawValue,
+                             String childTable, Set<String> existingColumns) {
+        if (!"id".equalsIgnoreCase(column) && !"parent_id".equals(column) && !existingColumns.contains(column)) {
+            // 未知列（回显别名等）剔除，仅记录
+            log.debug("剔除子表行未知列：table={}, column={}", childTable, column);
+            return;
+        }
+        if (JsonValueCodec.isShadowColumn(column)) {
+            // 影子列由数据库生成，赋值会报错
+            return;
+        }
+        Object value = rawValue;
+        if (value instanceof Map || value instanceof Collection) {
+            // 嵌套结构（如行内子表）序列化为 JSON 文本，避免 Java 对象直接写文本列；
+            // 主表开关打开时子表同步走统一信封，保证读写协议一致
+            value = ShadowColumnSupport.isJsonProtocolEnabled()
+                    ? JsonValueCodec.wrap(value)
+                    : com.alibaba.fastjson2.JSON.toJSONString(value);
+        }
+        record.putIfAbsent(column, value);
     }
 
     private static void assertValidIdentifier(String name) {

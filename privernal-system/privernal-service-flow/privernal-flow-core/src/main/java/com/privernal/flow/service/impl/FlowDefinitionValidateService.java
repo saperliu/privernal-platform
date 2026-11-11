@@ -21,11 +21,15 @@ import com.privernal.common.security.service.SecurityUtils;
 import com.privernal.flow.constant.FlowConstant;
 import com.privernal.flow.enums.FlowPermissionTypeEnum;
 import com.privernal.flow.enums.FlowScriptRuleEnum;
+import com.privernal.flow.utils.FlowNodeExtUtil;
 import com.privernal.system.dto.SystemRoleDTO;
 import com.privernal.system.feign.RemoteUserService;
+import org.dromara.warm.flow.core.FlowEngine;
 import org.dromara.warm.flow.core.dto.DefJson;
 import org.dromara.warm.flow.core.dto.NodeJson;
 import org.dromara.warm.flow.core.dto.SkipJson;
+import org.dromara.warm.flow.core.entity.Definition;
+import org.dromara.warm.flow.core.entity.Node;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -136,6 +140,7 @@ public class FlowDefinitionValidateService {
             checkPermissionFlag(node, nodeCode, roleIds, errors);
             checkAnyNodeSkip(node, nodeCode, nodeCodes, errors);
             checkEdges(node, nodeCode, nodeCodes, errors);
+            checkSubflowNode(node, nodeCode, defJson.getFlowCode(), errors);
         }
         if (roleSkipReason != null) {
             log.warn("流程定义校验跳过角色存在性检查：{}", roleSkipReason);
@@ -181,6 +186,65 @@ public class FlowDefinitionValidateService {
     }
 
     /**
+     * 子流程节点校验（R2-18）：目标流程编码必填、不得自引用、目标必须有已发布版本；
+     * 顺带做一级环检测（目标流程的子流程节点指回当前流程）。更深的环在运行时发起链校验
+     * （FlowInstanceServiceImpl.createsSubflowCycle，嵌套深度上限 3 层），保存期不展开整棵图。
+     */
+    private void checkSubflowNode(NodeJson node, String nodeCode, String currentFlowCode,
+                                  List<Map<String, Object>> errors) {
+        Map<String, String> ext = FlowNodeExtUtil.parseExt(node.getExt());
+        if (!FlowNodeExtUtil.NODE_KIND_SUBFLOW.equals(ext.get(FlowNodeExtUtil.KEY_NODE_KIND))) {
+            return;
+        }
+        String subflowCode = ext.get(FlowNodeExtUtil.KEY_SUBFLOW_CODE);
+        if (StringUtils.isBlank(subflowCode)) {
+            errors.add(error("SUBFLOW_CODE_REQUIRED", "子流程节点 " + nodeCode
+                    + " 未选择目标流程（ext.subflowCode 为空）：运行时会停留等待、无人可办", nodeCode));
+            return;
+        }
+        if (subflowCode.equals(currentFlowCode)) {
+            errors.add(error("SUBFLOW_SELF_REFERENCE", "子流程节点 " + nodeCode
+                    + " 不能引用自身流程（" + currentFlowCode + "）", nodeCode));
+            return;
+        }
+        Definition target;
+        try {
+            target = FlowEngine.defService().getPublishByFlowCode(subflowCode);
+        } catch (Exception e) {
+            log.warn("子流程目标查询失败 subflowCode={}", subflowCode, e);
+            return;
+        }
+        if (target == null) {
+            errors.add(error("SUBFLOW_NOT_PUBLISHED", "子流程节点 " + nodeCode + " 引用的流程「"
+                    + subflowCode + "」没有已发布版本：运行时会停留等待", nodeCode));
+            return;
+        }
+        try {
+            List<Node> targetNodes = FlowEngine.nodeService()
+                    .list(FlowEngine.newNode().setDefinitionId(target.getId()));
+            if (targetNodes == null) {
+                return;
+            }
+            for (Node targetNode : targetNodes) {
+                if (FlowNodeExtUtil.isSubflowNode(targetNode)
+                        && subflowCodeIsCurrent(targetNode, currentFlowCode)) {
+                    errors.add(error("SUBFLOW_CYCLE", "子流程节点 " + nodeCode + " 与流程「"
+                            + subflowCode + "」互相引用形成环，运行时会被拒绝发起", nodeCode));
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("子流程环检测失败 subflowCode={}", subflowCode, e);
+        }
+    }
+
+    private boolean subflowCodeIsCurrent(Node targetNode, String currentFlowCode) {
+        return currentFlowCode != null
+                && currentFlowCode.equals(FlowNodeExtUtil.parseExt(targetNode.getExt())
+                        .get(FlowNodeExtUtil.KEY_SUBFLOW_CODE));
+    }
+
+    /**
      * permission_flag 逐段校验：格式 {@code 类型:值}（多来源用 @@ 连接），无前缀视为裸用户 id。
      * 未知类型与不存在的角色 id 现在都能存进去、运行时静默匹配不上，这里拦成明确错误。
      */
@@ -192,6 +256,10 @@ public class FlowDefinitionValidateService {
                 return;
             }
             if (node.getNodeType() != null && node.getNodeType() == NODE_TYPE_END) {
+                return;
+            }
+            // R2-18：子流程节点无办理人是设计态（系统自动发起子流程并等待办结后回推）
+            if (FlowNodeExtUtil.isSubflowNodeByExt(node.getExt())) {
                 return;
             }
             errors.add(error("PERMISSION_FLAG_EMPTY", "节点 " + nodeCode

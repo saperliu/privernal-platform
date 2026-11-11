@@ -299,6 +299,45 @@ CREATE TABLE `dynamic_form_io_config` (
   UNIQUE KEY `uk_form` (`form_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='表单数据导入导出配置(high-setting §4.3)';
 /*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `dynamic_io_import_task`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `dynamic_io_import_task` (
+  `id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '主键=taskId',
+  `tenant_id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'system-default' COMMENT '租户号',
+  `revision` int NOT NULL DEFAULT '1' COMMENT '乐观锁',
+  `created_by` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '发起人',
+  `created_time` datetime NOT NULL COMMENT '创建时间',
+  `updated_by` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '更新人',
+  `updated_time` datetime DEFAULT NULL COMMENT '更新时间',
+  `deleted_flag` varchar(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'N' COMMENT '是否删除',
+  `deleted_by` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '删除人',
+  `deleted_time` datetime DEFAULT NULL COMMENT '删除时间',
+  `department_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '所属部门',
+  `organization_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '所属组织',
+  `remark` varchar(900) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '备注（任务级异常信息）',
+  `form_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '关联 dynamic_form.id',
+  `table_code` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '动态物理表名',
+  `database_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '业务数据源名',
+  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'PENDING_MAPPING' COMMENT 'PENDING_MAPPING待映射确认/RUNNING执行中/FINISHED完成/FAILED任务级失败',
+  `total` int NOT NULL DEFAULT '0' COMMENT '总行数',
+  `processed` int NOT NULL DEFAULT '0' COMMENT '已处理行数（含失败/跳过，续跑断点）',
+  `success` int NOT NULL DEFAULT '0' COMMENT '成功行数',
+  `skipped` int NOT NULL DEFAULT '0' COMMENT '跳过行数（重复键 SKIP 等）',
+  `failed` int NOT NULL DEFAULT '0' COMMENT '失败行数',
+  `worker_id` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '执行实例标识 ip+pid+启动时间（CAS 认领防多实例重复执行）',
+  `heartbeat_time` datetime DEFAULT NULL COMMENT '执行心跳；超过 dynamic.io.import.stale-seconds 未刷新可被重新认领续跑',
+  `headers_json` longtext COMMENT 'Excel 表头行原始字符串数组 JSON',
+  `mapping_json` longtext COMMENT '自定义列映射 {表头:字段编码}，空串=忽略该列',
+  `precheck_json` longtext COMMENT '跨环境列结构预检报告（matched/unmatched/missingRequired/warnings）',
+  `rows_json` longtext COMMENT '解析后的原始行（以表头为键的字符串值；类型转换在执行期做，保证续跑与首跑一致）',
+  `errors_json` longtext COMMENT '失败行明细数组（封顶 5000 条）',
+  `config_json` longtext COMMENT '发起时 io 配置快照（dup/strict/runBackscript/importFlowMode 等）',
+  `finished_time` datetime DEFAULT NULL COMMENT '结束时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_io_task_form` (`form_id`, `created_time`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='动态表数据导入任务持久化(R2-19：重启可续/多实例可见/自定义列映射/跨环境预检)';
+/*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `dynamic_form_log`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -904,6 +943,35 @@ CREATE TABLE `flow_form_version` (
   KEY `idx_ffv_table_code` (`table_code`) USING BTREE,
   KEY `idx_ffv_current` (`flow_code`,`current_flag`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='流程表单配置版本主表';
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `flow_subflow_rel`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `flow_subflow_rel` (
+  `id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '主键',
+  `tenant_id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'system-default' COMMENT '租户号',
+  `revision` int NOT NULL DEFAULT '1' COMMENT '乐观锁',
+  `created_by` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '创建人',
+  `created_time` datetime NOT NULL COMMENT '创建时间',
+  `updated_by` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '更新人',
+  `updated_time` datetime DEFAULT NULL COMMENT '更新时间',
+  `deleted_flag` varchar(1) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'N' COMMENT '是否删除',
+  `deleted_by` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '删除人',
+  `deleted_time` datetime DEFAULT NULL COMMENT '删除时间',
+  `department_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '所属部门（技术关联表可空）',
+  `organization_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '所属组织（技术关联表可空）',
+  `remark` varchar(900) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '备注（未发起原因等）',
+  `parent_instance_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '父流程实例id（flow_instance.id）',
+  `parent_task_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '父流程子流程节点任务id（flow_task.id）',
+  `child_instance_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '子流程实例id（发起成功后回填）',
+  `subflow_code` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '子流程编码（节点 ext.subflowCode 快照）',
+  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'LAUNCHED' COMMENT 'LAUNCHED已发起等待/DONE子流程办结已回推父流程/CHILD_TERMINATED子流程已终止/CHILD_REVOKED子流程已撤销',
+  `finished_time` datetime DEFAULT NULL COMMENT '子流程结束时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE KEY `uk_parent_task` (`parent_task_id`) USING BTREE,
+  KEY `idx_fsr_child` (`child_instance_id`) USING BTREE,
+  KEY `idx_fsr_parent` (`parent_instance_id`) USING BTREE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='流程父子实例关系（R2-18 子流程桥接）';
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `flow_his_task`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;

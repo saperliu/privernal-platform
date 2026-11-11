@@ -18,6 +18,7 @@ package com.privernal.dynamic.report.controller;
 
 import com.privernal.common.core.exception.ServiceException;
 import com.privernal.common.core.utils.StringUtils;
+import com.privernal.common.log.annotation.Log;
 import com.privernal.common.security.annotation.PreAuthorize;
 import com.privernal.common.security.service.SecurityUtils;
 import com.privernal.common.web.controller.BaseController;
@@ -26,6 +27,7 @@ import com.privernal.dynamic.dbs.util.DynamicTableAuthUtil;
 import com.privernal.dynamic.report.domain.DynamicDashboardItem;
 import com.privernal.dynamic.report.domain.DynamicDataset;
 import com.privernal.dynamic.report.domain.DynamicReport;
+import com.privernal.dynamic.report.service.DynamicReportPdfService;
 import com.privernal.dynamic.report.service.DynamicReportQueryService;
 import com.privernal.dynamic.report.service.IDynamicDatasetService;
 import com.privernal.dynamic.report.service.IDynamicDashboardService;
@@ -63,6 +65,9 @@ public class DynamicReportDataController extends BaseController {
 
     @Autowired
     private DynamicReportQueryService reportQueryService;
+
+    @Autowired
+    private DynamicReportPdfService reportPdfService;
 
     @Autowired
     private IDynamicDatasetService datasetService;
@@ -141,6 +146,56 @@ public class DynamicReportDataController extends BaseController {
         if (StringUtils.isBlank(dashboardCode) || StringUtils.isBlank(reportCode)) {
             return CommonResult.fail("dashboardCode 与 reportCode 不能为空");
         }
+        AuthorizedReport ctx = requireAuthorizedReport(dashboardCode, reportCode);
+        JSONArray filters = body.get("filters") == null ? null : JSONArray.from(body.get("filters"));
+        String database = SecurityUtils.getDatabaseName();
+        return CommonResult.ok(reportQueryService.query(database, ctx.report(), ctx.dataset(), filters));
+    }
+
+    /**
+     * 服务端 PDF 导出（R2-12 ④）：单卡聚合结果渲染成表格 PDF（复用单据打印的
+     * openhtmltopdf + 中文字体链）。取数与 /query 走完全同一条鉴权与查询链——
+     * 行级数据范围在查询内收口，导出不可能比查看者在页面上看到的多；
+     * filters 与页面全局筛选同结构（[{field,op,value}]）。
+     */
+    @Operation(summary = "图表 PDF 导出", description = "body: {dashboardCode, reportCode, filters?} → application/pdf 附件")
+    @Log(title = "报表PDF导出", isSaveRequestData = false)
+    @PostMapping("/export/pdf")
+    public void exportPdf(@RequestBody Map<String, Object> body, jakarta.servlet.http.HttpServletResponse response)
+            throws java.io.IOException {
+        String dashboardCode = StringUtils.trimToEmpty((String) body.get("dashboardCode"));
+        String reportCode = StringUtils.trimToEmpty((String) body.get("reportCode"));
+        if (StringUtils.isBlank(dashboardCode) || StringUtils.isBlank(reportCode)) {
+            response.sendError(400, "dashboardCode 与 reportCode 不能为空");
+            return;
+        }
+        // reportCode 同时拼进 Content-Disposition，文件名只落白名单字符（单据打印 PDF 同口径）
+        if (!reportCode.matches("[A-Za-z0-9_-]{1,64}")) {
+            response.sendError(400, "reportCode 非法");
+            return;
+        }
+        AuthorizedReport ctx = requireAuthorizedReport(dashboardCode, reportCode);
+        JSONArray filters = body.get("filters") == null ? null : JSONArray.from(body.get("filters"));
+        String database = SecurityUtils.getDatabaseName();
+        byte[] pdf = reportPdfService.renderReportPdf(database, ctx.report(), ctx.dataset(), filters);
+        log.info("报表 PDF 导出 dashboard {} report {} 操作人 {} 字节 {}",
+                dashboardCode, reportCode, SecurityUtils.getLoginName(), pdf.length);
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=report-" + reportCode + ".pdf");
+        response.setContentLength(pdf.length);
+        response.getOutputStream().write(pdf);
+        response.getOutputStream().flush();
+    }
+
+    /** 取数/导出共用装配：图表 + 它的数据集（数据集只为透传，权限校验已在此完成） */
+    private record AuthorizedReport(DynamicReport report, DynamicDataset dataset) {
+    }
+
+    /**
+     * 运行态鉴权与装配链（query 与 PDF 导出共用，口径必须一致）：
+     * 菜单权限 report:{dashboardCode}:view + 卡片归属 + 数据集底层表 list 权限。
+     */
+    private AuthorizedReport requireAuthorizedReport(String dashboardCode, String reportCode) {
         // 菜单权限：report:{dashboardCode}:view
         DynamicReportAuthUtil.requirePermission(dashboardCode, "view");
         // 图表必须真实挂在该仪表盘下：否则拿到 report:{A}:view 的人可以对任意 reportCode 取数
@@ -158,10 +213,7 @@ public class DynamicReportDataController extends BaseController {
             throw new ServiceException("图表的数据集不存在：" + report.getDatasetCode());
         }
         requireTablePermission(dataset);
-
-        JSONArray filters = body.get("filters") == null ? null : JSONArray.from(body.get("filters"));
-        String database = SecurityUtils.getDatabaseName();
-        return CommonResult.ok(reportQueryService.query(database, report, dataset, filters));
+        return new AuthorizedReport(report, dataset);
     }
 
     /**

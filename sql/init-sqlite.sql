@@ -355,6 +355,43 @@ CREATE TABLE IF NOT EXISTS dynamic_form_io_config (
 );
 
 
+CREATE TABLE IF NOT EXISTS dynamic_io_import_task (
+  id TEXT NOT NULL,
+  tenant_id TEXT NOT NULL DEFAULT 'system-default',
+  revision INTEGER NOT NULL DEFAULT 1,
+  created_by TEXT NOT NULL,
+  created_time TEXT NOT NULL,
+  updated_by TEXT,
+  updated_time TEXT,
+  deleted_flag TEXT NOT NULL DEFAULT 'N',
+  deleted_by TEXT,
+  deleted_time TEXT,
+  department_id TEXT NOT NULL,
+  organization_id TEXT NOT NULL,
+  remark TEXT,
+  form_id TEXT NOT NULL,
+  table_code TEXT,
+  database_name TEXT,
+  status TEXT NOT NULL DEFAULT 'PENDING_MAPPING',
+  total INTEGER NOT NULL DEFAULT 0,
+  processed INTEGER NOT NULL DEFAULT 0,
+  success INTEGER NOT NULL DEFAULT 0,
+  skipped INTEGER NOT NULL DEFAULT 0,
+  failed INTEGER NOT NULL DEFAULT 0,
+  worker_id TEXT,
+  heartbeat_time TEXT,
+  headers_json TEXT,
+  mapping_json TEXT,
+  precheck_json TEXT,
+  rows_json TEXT,
+  errors_json TEXT,
+  config_json TEXT,
+  finished_time TEXT,
+  PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_io_task_form ON dynamic_io_import_task (form_id, created_time);
+
+
 CREATE TABLE IF NOT EXISTS dynamic_form_log (
   id TEXT NOT NULL,
   tenant_id TEXT NOT NULL DEFAULT 'system-default',
@@ -896,6 +933,33 @@ CREATE TABLE IF NOT EXISTS flow_form_version (
 );
 CREATE INDEX IF NOT EXISTS idx_ffv_current ON flow_form_version (flow_code, current_flag);
 CREATE INDEX IF NOT EXISTS idx_ffv_table_code ON flow_form_version (table_code);
+
+-- R2-18 子流程桥接：父子实例映射（uk_parent_task 防同一父任务重复发起）
+CREATE TABLE IF NOT EXISTS flow_subflow_rel (
+  id TEXT NOT NULL,
+  tenant_id TEXT NOT NULL DEFAULT 'system-default',
+  revision INTEGER NOT NULL DEFAULT 1,
+  created_by TEXT NOT NULL,
+  created_time TEXT NOT NULL,
+  updated_by TEXT,
+  updated_time TEXT,
+  deleted_flag TEXT NOT NULL DEFAULT 'N',
+  deleted_by TEXT,
+  deleted_time TEXT,
+  department_id TEXT,
+  organization_id TEXT,
+  remark TEXT,
+  parent_instance_id TEXT NOT NULL,
+  parent_task_id TEXT NOT NULL,
+  child_instance_id TEXT,
+  subflow_code TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'LAUNCHED',
+  finished_time TEXT,
+  PRIMARY KEY (id),
+  CONSTRAINT uk_fsr_parent_task UNIQUE (parent_task_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fsr_child ON flow_subflow_rel (child_instance_id);
+CREATE INDEX IF NOT EXISTS idx_fsr_parent ON flow_subflow_rel (parent_instance_id);
 
 CREATE TABLE IF NOT EXISTS flow_his_task (
   id INTEGER NOT NULL,

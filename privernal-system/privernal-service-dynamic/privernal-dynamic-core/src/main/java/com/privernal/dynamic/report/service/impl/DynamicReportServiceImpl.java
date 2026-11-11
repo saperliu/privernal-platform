@@ -213,6 +213,20 @@ public class DynamicReportServiceImpl implements IDynamicReportService {
             JSONObject column = columns.getJSONObject(i);
             columnTypes.put(column.getString("fieldCode"), column.getString("dataType"));
         }
+        // 关联列与查询服务 parseColumnTypes 同口径并入：保存图表时维度/度量/过滤选
+        // 关联列才不会被「不在列快照中」挡掉（joins 段的 columns 是服务端落定的关联面）
+        JSONArray joins = snapshot.getJSONArray("joins");
+        for (int i = 0; joins != null && i < joins.size(); i++) {
+            JSONObject join = joins.getJSONObject(i);
+            JSONArray joinColumns = join == null ? null : join.getJSONArray("columns");
+            for (int c = 0; joinColumns != null && c < joinColumns.size(); c++) {
+                JSONObject column = joinColumns.getJSONObject(c);
+                String fieldCode = column.getString("fieldCode");
+                if (StringUtils.isNotBlank(fieldCode) && !columnTypes.containsKey(fieldCode)) {
+                    columnTypes.put(fieldCode, StringUtils.defaultIfBlank(column.getString("dataType"), "text"));
+                }
+            }
+        }
         return columnTypes;
     }
 

@@ -54,6 +54,7 @@ import com.privernal.system.dto.SystemDepartmentDTO;
 import com.privernal.system.dto.SystemUserDTO;
 import com.privernal.system.feign.RemoteUserService;
 import com.privernal.system.filter.WorkflowUserFilterDTO;
+import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import io.swagger.v3.oas.annotations.Operation;
@@ -743,6 +744,8 @@ public class CommonController {
                     // 快照列键必须移除：它的驼峰别名（subTable2228）会随回显混进 formData，
                     // 保存时被转写成不存在的列（sub_table2228）导致 UPDATE 失败；数组已由 field 键承载
                     map.remove(FormTransferTable.toDbColumnName(def.getField()));
+                    // 行内点号字段编码补原键别名（渲染端按平铺原编码读写行数据）
+                    withFieldCodeAliases(rows, def.getNode());
                     map.put(def.getField(), withCamelAliases(rows));
                 }
             }
@@ -802,6 +805,37 @@ public class CommonController {
             rows.forEach(this::withCamelAliases);
         }
         return rows;
+    }
+
+    /**
+     * 子表行按行内字段原始编码补键（sw_on → sw.on）：行内字段编码含点号时物理列已规范化成
+     * 下划线，而渲染端按平铺键（设计器原编码）读写行数据，回显缺原键会导致开关等值恒为空
+     * （5.10 子表回显行 switch 保存丢失的读侧缺口；驼峰别名不覆盖点号形态）
+     */
+    private void withFieldCodeAliases(List<Map<String, Object>> rows, JSONObject node) {
+        if (rows == null || rows.isEmpty() || node == null) {
+            return;
+        }
+        JSONArray children = node.getJSONArray("children");
+        if (children == null) {
+            return;
+        }
+        Map<String, String> columnToField = new HashMap<>();
+        for (int i = 0; i < children.size(); i++) {
+            JSONObject child = children.getJSONObject(i);
+            String field = child == null ? null : child.getString("field");
+            if (field == null || field.isEmpty()) {
+                continue;
+            }
+            columnToField.putIfAbsent(FormTransferTable.toDbColumnName(field), field);
+        }
+        for (Map<String, Object> row : rows) {
+            columnToField.forEach((column, field) -> {
+                if (!column.equals(field) && row.containsKey(column)) {
+                    row.putIfAbsent(field, row.get(column));
+                }
+            });
+        }
     }
 
     /**

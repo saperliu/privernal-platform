@@ -48,6 +48,14 @@ public interface IDynamicDatasetService {
     DynamicDataset buildTransientDataset(String tableCode, com.alibaba.fastjson2.JSONArray joins);
 
     /**
+     * 数据集可关联项清单（R2-12）：subTable=主表元数据的 sub-table 节点（子表本身就是登记）；
+     * relation=元数据 relation.formCode 声明且 dynamic_form_relation 已登记的目标。
+     * 设计器只展示这里返回的项——选了就能保存成功（resolveJoinMeta 同口径），
+     * 未登记的关联在 UI 层就不可见，而不是保存时才报 400。
+     */
+    com.alibaba.fastjson2.JSONArray listJoinOptions(String tableCode);
+
+    /**
      * 刷新列快照：按底层表单当前列重建快照；已保存图表引用了被删除字段时报错，不做静默兼容
      */
     DynamicDataset refreshDataset(String datasetCode);

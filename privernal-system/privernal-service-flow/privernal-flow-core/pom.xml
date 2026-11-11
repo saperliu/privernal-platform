@@ -88,6 +88,12 @@
             <artifactId>privernal-common-security</artifactId>
         </dependency>
 
+        <!-- Xvri Common Redis（R2-18 票签并发锁需要原子 setIfAbsent，SaTokenDao 只有 get/set 无原子语义） -->
+        <dependency>
+            <groupId>com.privernal</groupId>
+            <artifactId>privernal-common-redis</artifactId>
+        </dependency>
+
         <!-- 工作流接口 -->
         <dependency>
             <groupId>com.privernal</groupId>

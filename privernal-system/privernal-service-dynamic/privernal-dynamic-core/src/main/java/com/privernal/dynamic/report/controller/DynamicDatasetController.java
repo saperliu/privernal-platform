@@ -88,6 +88,18 @@ public class DynamicDatasetController extends BaseController {
     }
 
     /**
+     * 可关联项清单（R2-12）：subTable=主表元数据子表节点，relation=元数据声明且已登记的引用关联。
+     * 设计器的「关联统计」只展示这里返回的项——选了就能保存成功（保存链 resolveJoinMeta 同口径），
+     * 未登记的关联在 UI 层就不可见，而不是保存时才报 400。权限与 save 同口径。
+     */
+    @Operation(summary = "数据集可关联项", description = "返回 [{type:'subTable'|'relation', field, label, targetTableCode?}]")
+    @PreAuthorize(hasPermi = "report:dataset:add")
+    @GetMapping("/joinOptions")
+    public CommonResult<Object> joinOptions(@RequestParam("tableCode") String tableCode) {
+        return CommonResult.ok(datasetService.listJoinOptions(tableCode));
+    }
+
+    /**
      * 数据源健康检查（M3.9）：按提交的配置真实访问一次，返回 {ok, category, message, columns}。
      * <p>
      * 编辑态表单里的凭据是掩码，必须先按库里已有的配置还原再发请求——否则等于把

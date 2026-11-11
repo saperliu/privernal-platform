@@ -130,6 +130,10 @@ public class WorkflowTimeoutActionHandler implements ScheduleActionHandler {
                 flowInstanceService.syncBusinessStatus(instance.getId());
                 flowEventPublisher.publishTimeout(instance.getId(), resolveFlowCode(instance),
                         instance.getBusinessId(), "任务超时已自动通过，请关注后续节点");
+                // R2-18 子流程桥接：超时自动通过可能停到子流程节点（发起子流程），
+                // 本实例若是子流程也可能就此走完（回推父流程）
+                flowInstanceService.launchSubflowTasks(instance.getId());
+                flowInstanceService.resumeSubflowParent(instance.getId());
                 timeoutTaskSyncer.syncByInstanceAsync(instance.getId());
             }
         } finally {

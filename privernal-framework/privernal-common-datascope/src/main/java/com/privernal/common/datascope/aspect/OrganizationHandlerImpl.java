@@ -51,6 +51,9 @@ public class OrganizationHandlerImpl implements OrganizationHandler {
             "flow_his_task",
             "flow_user",
             "flow_form",
+            // R2-18 子流程父子关系：由流转线程与超时调度线程写入（无登录态时 organization_id
+            // 会被拦截器写成 NULL、查询被过滤成 0 行），组织口径跟随父子实例本身
+            "flow_subflow_rel",
             // 开放与集成的流水表：由机器调用（无 sa-token 登录态）与 Webhook 异步线程写入，
             // organization_id 由代码从凭证/订阅显式带入。交给拦截器会在无上下文时写成 NULL，
             // 并把异步线程的 UPDATE 过滤成 0 行（事件状态永远停在 PENDING）。

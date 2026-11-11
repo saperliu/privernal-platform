@@ -16,6 +16,7 @@
 
 package com.privernal.flow.service;
 
+import com.privernal.flow.domain.FlowSubflowRel;
 import com.privernal.flow.dto.FlowInstanceStatusDTO;
 import com.privernal.flow.dto.FlowNodeInfoDTO;
 import com.privernal.flow.dto.FlowStartDTO;
@@ -117,4 +118,23 @@ public interface IFlowInstanceService {
      * 获取流程实例的节点信息列表（用于流程图高亮回显）
      */
     List<FlowNodeInfoDTO> getInstanceNodes(Long instanceId);
+
+    /**
+     * 子流程桥接（R2-18）：发起本实例当前停留的子流程节点（ext.nodeKind=subflow）对应的
+     * 子流程实例，幂等（同一父任务只发一次）。各流转点（发起/通过/驳回/超时自动通过）调用，
+     * 单节点失败只记日志并通知父流程发起人，不阻断主流程。
+     */
+    void launchSubflowTasks(Long instanceId);
+
+    /**
+     * 子流程桥接（R2-18）：本实例（作为子流程）结束后的父流程回推——
+     * 办结（通过/走完）自动通过父任务流转；终止/撤销记关系状态并通知父流程发起人。
+     * 各结束点（通过办结/超时自动通过/发起后自动跳过）调用；非子流程实例或未结束时直接返回。
+     */
+    void resumeSubflowParent(Long instanceId);
+
+    /**
+     * 查询实例的子流程关系列表（实例记录页展示子流程节点与子实例状态）
+     */
+    List<FlowSubflowRel> listSubflowRels(Long instanceId);
 }

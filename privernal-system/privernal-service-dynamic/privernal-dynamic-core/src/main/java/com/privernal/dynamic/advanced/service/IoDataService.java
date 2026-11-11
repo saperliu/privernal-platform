@@ -21,6 +21,7 @@ import com.privernal.common.datascope.aspect.DataScopeHelper;
 import com.privernal.common.datascope.context.OrganizationContextHolder;
 import com.privernal.common.security.service.SecurityUtils;
 import com.privernal.dynamic.advanced.domain.DynamicFormIoConfig;
+import com.privernal.dynamic.advanced.domain.DynamicIoImportTask;
 import com.privernal.dynamic.advanced.engine.AdvancedKillSwitch;
 import com.privernal.dynamic.advanced.engine.ConditionEvaluator;
 import com.privernal.dynamic.advanced.engine.DataWriteAttributes;
@@ -28,6 +29,7 @@ import com.privernal.dynamic.advanced.engine.LinkageSupport;
 import com.privernal.dynamic.advanced.engine.SafeConditionSql;
 import com.privernal.dynamic.advanced.engine.SensitiveDataMask;
 import com.privernal.dynamic.advanced.mapper.DynamicFormIoConfigMapper;
+import com.privernal.dynamic.advanced.mapper.DynamicIoImportTaskMapper;
 import com.privernal.dynamic.advanced.mapper.DynamicLinkageQueryMapper;
 import com.privernal.dynamic.dba.utils.FormDataTitleUtils;
 import com.privernal.dynamic.dba.utils.FormTransferTable;
@@ -62,6 +64,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
+import java.lang.management.ManagementFactory;
 import java.math.BigDecimal;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -76,19 +79,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
+import jakarta.annotation.PreDestroy;
+
 /**
- * 表单数据导入导出运行时（T1）。
+ * 表单数据导入导出运行时（T1 + R2-19 导入导出增强）。
  * <ul>
  *   <li>模板：两 Sheet（数据头+示例行 / 字段说明），日期列统一文本格式；</li>
- *   <li>导入：异步执行 + 进度轮询 + 失败报告（可下载回改）；类型/必填/唯一校验，
- *       重复键策略 SKIP/OVERWRITE/REJECT；sourceTag=IMPORT，默认抑制联动事件与 DATE_FIELD 注册（§4.2），
- *       由「重算到期任务」/每日对账补注册；</li>
+ *   <li>导入（R2-19 改造）：两阶段——preview 解析+跨环境列结构预检（落 PENDING_MAPPING 任务）、
+ *       start 按自定义列映射启动；任务全量持久化 {@link DynamicIoImportTask}，
+ *       重启可续（心跳过期后由 IoImportTaskMaintainer CAS 认领断点续跑）、多实例可见（进度/记录读库）；
+ *       行数据以「表头/字段编码为键的原始字符串」入库，类型转换在执行期做——续跑经 JSON 往返与首跑一致；
+ *       类型/必填/唯一校验，重复键策略 SKIP/OVERWRITE/REJECT；sourceTag=IMPORT，默认抑制联动事件与
+ *       DATE_FIELD 注册（§4.2），由「重算到期任务」/每日对账补注册；</li>
  *   <li>导出：分页 1000 循环流式写出，敏感列按 io_config.sensitive_policy 脱敏/剔除，
  *       选项类字段按 metaData props.options 回翻译，@Log 审计；</li>
  *   <li>kill switch：io 闸关停时全部拒绝（T9/D7）。</li>
@@ -98,21 +106,60 @@ import java.util.function.Consumer;
 @Service
 public class IoDataService {
 
-    /** 导入执行线程（单实例顺序执行足够；多实例部署时任务各自独立不冲突） */
+    /** 失败行明细落库封顶：超出部分只计数不再追加（报告页提示已截断） */
+    private static final int ERROR_CAP = 5000;
+
+    /** 进度/心跳批量落库节流：行数或时间任一达到即刷库 */
+    private static final int FLUSH_ROWS = 20;
+    private static final long FLUSH_MILLIS = 2000L;
+
+    /** 导入执行线程（单实例顺序执行足够；多实例靠 DB 认领保证同一任务只有一个执行者） */
     private final ExecutorService importExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "io-import-worker");
         thread.setDaemon(true);
         return thread;
     });
 
-    /** 导入任务状态（内存态；1 小时后由轮询方触发清理） */
-    private final Map<String, ImportTask> tasks = new ConcurrentHashMap<>();
+    /** 本实例执行者标识（hostname+pid+启动时间，仿调度实例注册口径） */
+    private final String workerId = buildWorkerId();
+
+    /** 执行者标识（IoImportTaskMaintainer 认领 stale 任务时写同一 worker_id） */
+    public String workerId() {
+        return workerId;
+    }
+
+    private static String buildWorkerId() {
+        try {
+            String host = java.net.InetAddress.getLocalHost().getHostName();
+            return host + "-" + ProcessHandle.current().pid() + "-"
+                    + ManagementFactory.getRuntimeMXBean().getStartTime();
+        } catch (Exception e) {
+            return "unknown-" + ProcessHandle.current().pid();
+        }
+    }
+
+    /** 优雅停机：等在跑的行处理落库；未完成任务靠心跳过期被重新认领续跑 */
+    @PreDestroy
+    public void shutdownExecutor() {
+        importExecutor.shutdown();
+        try {
+            if (!importExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                importExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            importExecutor.shutdownNow();
+        }
+    }
 
     @Autowired
     private DynamicFormColumnMapper formColumnMapper;
 
     @Autowired
     private DynamicFormIoConfigMapper ioConfigMapper;
+
+    @Autowired
+    private DynamicIoImportTaskMapper ioImportTaskMapper;
 
     @Autowired
     private DynamicTableService dynamicTableService;
@@ -183,7 +230,7 @@ public class IoDataService {
                 row.createCell(0).setCellValue(displayCode(column, schemaFields));
                 row.createCell(1).setCellValue(column.getFiledName());
                 row.createCell(2).setCellValue(column.getFiledType());
-                row.createCell(3).setCellValue(schema != null && Boolean.TRUE.equals(schema.getBoolean("required")) ? "是" : "否");
+                row.createCell(3).setCellValue(isRequiredField(schema) ? "是" : "否");
                 row.createCell(4).setCellValue(optionsText(schema));
             }
             for (int i = 0; i < columns.size(); i++) {
@@ -199,7 +246,14 @@ public class IoDataService {
 
     // ---------------- 导入 ----------------
 
-    public Map<String, Object> startImport(String formId, byte[] fileBytes) throws Exception {
+    /**
+     * 预检导入（两阶段第一步）：解析 Excel 表头与原始行，生成跨环境列结构预检报告，
+     * 任务以 PENDING_MAPPING 落库（不执行）。行以「表头为键的原始字符串」存 rows_json，
+     * 类型转换在执行期做——续跑经 JSON 往返后与首跑行为一致。
+     *
+     * @return taskId / total / headers / mapping（自动匹配建议）/ precheck（预检报告）/ fields（可映射字段）
+     */
+    public Map<String, Object> previewImport(String formId, byte[] fileBytes) throws Exception {
         if (!killSwitch.ioEnabled()) {
             throw new IllegalStateException("导入导出能力已被平台关停（kill switch）");
         }
@@ -208,11 +262,467 @@ public class IoDataService {
         if (!"Y".equals(config.getImportEnabled())) {
             throw new IllegalArgumentException("该表单未开启数据导入");
         }
-        String database = linkageSupport.resolveDatabase(form.getOrganizationId());
         List<DynamicFormColumn> columns = visibleColumns(formId, null);
         List<JSONObject> schemaFields = inputFields(form);
-
         // 解析（同步做，文件异常立刻反馈；行处理异步）
+        List<String> headers = new ArrayList<>();
+        List<Map<String, Object>> rows = parseSheet(fileBytes, headers);
+        int limit = config.getImportLimit() == null ? 5000 : config.getImportLimit();
+        if (rows.size() > limit) {
+            throw new IllegalArgumentException("导入行数 " + rows.size() + " 超过单次上限 " + limit);
+        }
+        JSONObject precheck = buildPrecheck(headers, rows, columns, schemaFields);
+        Map<String, String> mapping = suggestMapping(headers, columns, schemaFields);
+
+        String taskId = UUID.randomUUID().toString().replace("-", "");
+        DynamicIoImportTask entity = new DynamicIoImportTask();
+        entity.setId(taskId);
+        entity.setFormId(formId);
+        entity.setTableCode(form.getTableCode());
+        entity.setDatabaseName(linkageSupport.resolveDatabase(form.getOrganizationId()));
+        entity.setStatus(DynamicIoImportTask.STATUS_PENDING_MAPPING);
+        entity.setTotal(rows.size());
+        entity.setProcessed(0);
+        entity.setSuccess(0);
+        entity.setSkipped(0);
+        entity.setFailed(0);
+        entity.setHeadersJson(JSON.toJSONString(headers));
+        entity.setMappingJson(JSON.toJSONString(mapping));
+        entity.setPrecheckJson(precheck.toJSONString());
+        entity.setRowsJson(JSON.toJSONString(rows));
+        entity.setErrorsJson("[]");
+        entity.setConfigJson(configSnapshot(config));
+        // 归属挂表单（预检无业务库访问，EntityHandler 会话兜底；显式赋值保证与表单同组织）
+        entity.setOrganizationId(form.getOrganizationId());
+        entity.setDepartmentId(form.getDepartmentId());
+        ioImportTaskMapper.insert(entity);
+        log.info("导入预检 form={} rows={} unmatched={} missingRequired={} operator={}",
+                formId, rows.size(), precheck.getJSONArray("unmatched") == null ? 0 : precheck.getJSONArray("unmatched").size(),
+                precheck.getJSONArray("missingRequired") == null ? 0 : precheck.getJSONArray("missingRequired").size(),
+                SecurityUtils.getUserId());
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("taskId", taskId);
+        result.put("total", rows.size());
+        result.put("headers", headers);
+        result.put("mapping", mapping);
+        result.put("precheck", precheck);
+        result.put("fields", fieldSummaries(columns, schemaFields));
+        return result;
+    }
+
+    /**
+     * 确认自定义列映射并启动导入（两阶段第二步）：校验映射 → 按映射重排 rows_json（键改字段编码，
+     * 重算 total）→ CAS 置 RUNNING → 提交本实例执行。行数据在库，任何实例发起/续跑等价。
+     */
+    public Map<String, Object> startImport(String taskId, Map<String, String> mapping) {
+        if (!killSwitch.ioEnabled()) {
+            throw new IllegalStateException("导入导出能力已被平台关停（kill switch）");
+        }
+        DynamicIoImportTask entity = requireTask(taskId);
+        if (!DynamicIoImportTask.STATUS_PENDING_MAPPING.equals(entity.getStatus())) {
+            throw new IllegalStateException("任务状态为 " + entity.getStatus() + "，不能重复启动");
+        }
+        DynamicForm form = requireForm(entity.getFormId());
+        DynamicFormIoConfig config = loadConfig(entity.getFormId());
+        if (!"Y".equals(config.getImportEnabled())) {
+            throw new IllegalArgumentException("该表单未开启数据导入");
+        }
+        List<DynamicFormColumn> columns = visibleColumns(entity.getFormId(), null);
+        // 映射校验：目标字段必须存在且不重复；空串=忽略该列
+        Map<String, String> clean = new LinkedHashMap<>();
+        Set<String> targets = new HashSet<>();
+        if (mapping != null) {
+            for (Map.Entry<String, String> entry : mapping.entrySet()) {
+                String header = entry.getKey();
+                String code = entry.getValue() == null ? "" : entry.getValue().trim();
+                if (StringUtils.isEmpty(header)) {
+                    continue;
+                }
+                if (!code.isEmpty()) {
+                    if (columnByCode(columns, code) == null) {
+                        throw new IllegalArgumentException("映射目标字段不存在：" + code);
+                    }
+                    if (!targets.add(code)) {
+                        throw new IllegalArgumentException("多个列映射到同一字段：" + code);
+                    }
+                }
+                clean.put(header, code);
+            }
+        }
+        // 应用映射：rows 改以字段编码为键（值仍是原始字符串），并重算 total
+        List<Map<String, Object>> rows = parseStoredRows(entity.getRowsJson());
+        List<Map<String, Object>> mapped = new ArrayList<>();
+        int total = 0;
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            boolean empty = true;
+            for (Map.Entry<String, String> entry : clean.entrySet()) {
+                String code = entry.getValue();
+                if (code.isEmpty()) {
+                    continue;
+                }
+                Object raw = row.get(entry.getKey());
+                if (raw != null && !String.valueOf(raw).isEmpty()) {
+                    empty = false;
+                }
+                out.put(code, raw);
+            }
+            if (!empty) {
+                mapped.add(out);
+                total++;
+            }
+        }
+        DynamicIoImportTask update = new DynamicIoImportTask();
+        update.setRowsJson(JSON.toJSONString(mapped));
+        update.setMappingJson(JSON.toJSONString(clean));
+        update.setTotal(total);
+        update.setConfigJson(configSnapshot(config));
+        ioImportTaskMapper.update(update, Wrappers.<DynamicIoImportTask>lambdaUpdate()
+                .eq(DynamicIoImportTask::getId, taskId));
+        // CAS 置 RUNNING：并发重复 start 只有一个成功（另一实例同任务也不会双跑）
+        int claimed = ioImportTaskMapper.startPendingTask(taskId, workerId, new Date());
+        if (claimed == 0) {
+            throw new IllegalStateException("任务已启动或状态已变化，请刷新导入记录");
+        }
+        importExecutor.submit(() -> {
+            try {
+                runTask(taskId);
+            } catch (Throwable t) {
+                log.error("导入任务执行逃逸异常（runTask 外抛，已兜底）taskId={}", taskId, t);
+            }
+        });
+        log.info("导入启动 form={} taskId={} total={} mapping={} operator={}",
+                entity.getFormId(), taskId, total, clean.size(), SecurityUtils.getUserId());
+        Map<String, Object> result = new HashMap<>();
+        result.put("taskId", taskId);
+        result.put("total", total);
+        return result;
+    }
+
+    /**
+     * 兼容旧调用方的一步式导入：预检 → 自动映射 → 立即启动。
+     * 保留原因：老前端/移动端/脚本按旧契约调用；新 UI 走 preview + start 两阶段（可改映射）。
+     */
+    public Map<String, Object> startImport(String formId, byte[] fileBytes) throws Exception {
+        Map<String, Object> preview = previewImport(formId, fileBytes);
+        @SuppressWarnings("unchecked")
+        Map<String, String> mapping = (Map<String, String>) preview.get("mapping");
+        return startImport(String.valueOf(preview.get("taskId")), mapping);
+    }
+
+    /**
+     * 导入执行（首跑与续跑共用）：从库读任务，processed 为断点——跳过已处理行，
+     * 重建文件内查重集合后继续。计数与失败明细每 20 行/2 秒落库（多实例读库可见进度）。
+     * 全方法体（含首条任务行查询）都在忽略上下文与 try/catch 内：executor.submit 的 Future
+     * 会吞掉逃逸 Throwable（R2-19 实测：无会话查询抛错被吞 → 任务卡 RUNNING 被反复认领）。
+     */
+    private void runTask(String taskId) {
+        // 导入线程缺会话：任务行/表单/列元数据查询与业务落库都需绕过会话级过滤（§5.5 同口径），
+        // 行级数据范围不适用
+        OrganizationContextHolder.setIgnoreOrgAndDepartment(true);
+        DynamicIoImportTask entity = null;
+        RunState state = new RunState(new DynamicIoImportTask());
+        try {
+            entity = ioImportTaskMapper.selectById(taskId);
+            if (entity == null) {
+                log.error("导入任务执行失败：任务不存在 taskId={}", taskId);
+                return;
+            }
+            state = new RunState(entity);
+            DynamicForm form = requireForm(entity.getFormId());
+            JSONObject configSnap = StringUtils.isEmpty(entity.getConfigJson())
+                    ? new JSONObject() : JSON.parseObject(entity.getConfigJson());
+            String database = StringUtils.isNotEmpty(entity.getDatabaseName())
+                    ? entity.getDatabaseName() : linkageSupport.resolveDatabase(form.getOrganizationId());
+            List<DynamicFormColumn> columns = visibleColumns(entity.getFormId(), null);
+            List<JSONObject> schemaFields = inputFields(form);
+            List<Map<String, Object>> rows = parseStoredRows(entity.getRowsJson());
+            String dup = StringUtils.isEmpty(configSnap.getString("dupStrategy")) ? "SKIP" : configSnap.getString("dupStrategy");
+            boolean strict = !"N".equals(configSnap.getString("strictValidate"));
+            boolean runScript = "Y".equals(configSnap.getString("runBackscript"));
+            String importFlowMode = configSnap.getString("importFlowMode");
+            JSONObject metaData = form.getMetaData();
+            String backScript = null;
+            if (runScript && metaData != null && metaData.getJSONObject("backScript") != null) {
+                backScript = metaData.getJSONObject("backScript").getString("script");
+            }
+            List<String> uniqueCodes = uniqueColumnCodes(columns);
+            // 导入反向解析：导出文件里人员/部门/关联列是文案（昵称/名称/displayField 值），
+            // 写库前还原为存储 id；值本身已是 id 时保持不变
+            ImportRefResolver refResolver = buildImportResolver(form, schemaFields);
+
+            // 断点续跑：跳过已处理行，并从已处理行重建文件内查重集合（唯一键值）
+            int offset = entity.getProcessed() == null ? 0 : Math.min(entity.getProcessed(), rows.size());
+            Set<String> seenInFile = new HashSet<>();
+            for (int i = 0; i < offset && i < rows.size(); i++) {
+                markSeenInFile(seenInFile, uniqueCodes, rows.get(i));
+            }
+            state.lastFlushTime = System.currentTimeMillis();
+            state.lastFlushProcessed = offset;
+            for (int i = offset; i < rows.size(); i++) {
+                Map<String, Object> row = rows.get(i);
+                int rowIndex = state.processed.get() + 1;
+                try {
+                    if (row.isEmpty()) {
+                        state.processed.incrementAndGet();
+                        continue;
+                    }
+                    // 类型转换：rows_json 存原始字符串，首跑/续跑都从这里转（口径一致）
+                    Map<String, Object> converted = convertRow(columns, row);
+                    refResolver.resolve(converted);
+                    // 必填校验
+                    if (strict) {
+                        String missing = checkRequired(converted, schemaFields, columns);
+                        if (missing != null) {
+                            throw new IllegalArgumentException("必填字段缺失：" + missing);
+                        }
+                    }
+                    // id 有值 → 更新；唯一列查重
+                    Object rowId = converted.get("id");
+                    if (rowId == null || String.valueOf(rowId).isEmpty()) {
+                        converted.remove("id");
+                        String dupKey = findDuplicate(database, entity.getTableCode(), uniqueCodes, converted, seenInFile);
+                        if (dupKey != null) {
+                            switch (dup) {
+                                case "REJECT" -> throw new IllegalArgumentException(
+                                        "唯一键冲突（" + dupKey + "），整批拒绝（dup_strategy=REJECT）");
+                                case "OVERWRITE" -> {
+                                    String existId = locateId(database, entity.getTableCode(), uniqueCodes, converted);
+                                    if (existId != null) {
+                                        converted.put("id", existId);
+                                    } else {
+                                        state.skipped.incrementAndGet();
+                                        state.errors.add("行 " + rowIndex + "：文件内重复，跳过");
+                                        // processed 由行级 finally 统一递增（旧实现此处+finally 双计，R2-19 修正）
+                                        flushIfDue(state, taskId);
+                                        continue;
+                                    }
+                                }
+                                default -> {
+                                    state.skipped.incrementAndGet();
+                                    state.errors.add("行 " + rowIndex + "：唯一键冲突（" + dupKey + "），按 SKIP 跳过");
+                                    // processed 由行级 finally 统一递增（旧实现此处+finally 双计，R2-19 修正）
+                                    flushIfDue(state, taskId);
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                    // 数据标题 & 工作流表单落草稿（import_flow_mode=NONE，§4.1）
+                    if (metaData != null) {
+                        String dataTitle = FormDataTitleUtils.buildTitle(metaData, converted);
+                        if (StringUtils.isNotEmpty(dataTitle)) {
+                            converted.put("title", dataTitle);
+                        }
+                    }
+                    if (form.getIsWorkflow() != null && form.getIsWorkflow() == 1
+                            && !"AUTO_START".equals(importFlowMode)) {
+                        converted.put("status", 0);
+                    }
+                    // 落库：sourceTag=IMPORT（联动/DATE_FIELD 注册按 trigger_mode 抑制，§4.2）；
+                    // 导入线程无会话，代理身份=表单创建人（动态表 created_by NOT NULL）
+                    DataWriteAttributes.Snapshot previous = DataWriteAttributes.push(
+                            DataWriteAttributes.SOURCE_IMPORT, 0,
+                            StringUtils.isNotEmpty(form.getCreatedBy()) ? form.getCreatedBy() : "system-import",
+                            form.getDepartmentId(), form.getOrganizationId());
+                    try {
+                        if (StringUtils.isNotEmpty(backScript)) {
+                            commonService.saveTableData(database, entity.getTableCode(), backScript, converted, true);
+                        } else {
+                            dynamicTableService.saveOrUpdate(database, entity.getTableCode(), converted);
+                        }
+                    } finally {
+                        DataWriteAttributes.restore(previous);
+                    }
+                    state.success.incrementAndGet();
+                } catch (Exception e) {
+                    state.failed.incrementAndGet();
+                    state.errors.add("行 " + rowIndex + "：" + e.getMessage());
+                    log.warn("导入行失败 form={} row={} error={}", entity.getFormId(), rowIndex, e.getMessage());
+                } finally {
+                    state.processed.incrementAndGet();
+                }
+                flushIfDue(state, taskId);
+            }
+            finishTask(state, taskId, null);
+        } catch (Exception e) {
+            log.error("导入任务异常 taskId={} form={}", taskId, entity == null ? null : entity.getFormId(), e);
+            state.errors.add("任务异常终止：" + e.getMessage());
+            finishTask(state, taskId, e.getMessage());
+        } finally {
+            OrganizationContextHolder.clear();
+        }
+        log.info("导入任务完成 taskId={} form={} total={} success={} skipped={} failed={} status={}",
+                taskId, entity == null ? null : entity.getFormId(), state.totalOf(), state.success.get(),
+                state.skipped.get(), state.failed.get(), state.terminalStatus);
+    }
+
+    /**
+     * 断点续跑入口（IoImportTaskMaintainer 认领 stale 任务后调用）：行数据/断点都在库，直接重入执行循环。
+     * Throwable 兜底：Future.submit 不取回结果时逃逸异常被静默吞掉（无日志），必须在此显式落日志。
+     */
+    public void resumeTask(String taskId) {
+        log.info("导入任务断点续跑 taskId={} worker={}", taskId, workerId);
+        importExecutor.submit(() -> {
+            try {
+                runTask(taskId);
+            } catch (Throwable t) {
+                log.error("导入任务执行逃逸异常（runTask 外抛，已兜底）taskId={}", taskId, t);
+            }
+        });
+    }
+
+    /** 执行期可变状态：内存计数（从 DB 断点播种）+ 节流落库 */
+    private static class RunState {
+        final AtomicInteger processed;
+        final AtomicInteger success;
+        final AtomicInteger skipped;
+        final AtomicInteger failed;
+        final List<String> errors = java.util.Collections.synchronizedList(new ArrayList<>());
+        long lastFlushTime = 0L;
+        int lastFlushProcessed = 0;
+        String terminalStatus;
+
+        RunState(DynamicIoImportTask entity) {
+            processed = new AtomicInteger(entity.getProcessed() == null ? 0 : entity.getProcessed());
+            success = new AtomicInteger(entity.getSuccess() == null ? 0 : entity.getSuccess());
+            skipped = new AtomicInteger(entity.getSkipped() == null ? 0 : entity.getSkipped());
+            failed = new AtomicInteger(entity.getFailed() == null ? 0 : entity.getFailed());
+        }
+
+        int totalOf() {
+            return processed.get();
+        }
+    }
+
+    /** 每 20 行或 2 秒落一次进度/心跳/失败明细（落库失败不中断导入，下个窗口重试） */
+    private void flushIfDue(RunState state, String taskId) {
+        long now = System.currentTimeMillis();
+        if (state.processed.get() - state.lastFlushProcessed < FLUSH_ROWS
+                && now - state.lastFlushTime < FLUSH_MILLIS) {
+            return;
+        }
+        state.lastFlushProcessed = state.processed.get();
+        state.lastFlushTime = now;
+        flushProgress(taskId, state, null);
+    }
+
+    /** 进度/心跳/失败明细落库；statusOverride 非空时同时改状态（结束态）。落库无会话（导入线程/续跑线程）也要能写：组织过滤忽略 */
+    private void flushProgress(String taskId, RunState state, String statusOverride) {
+        boolean oldIgnore = OrganizationContextHolder.isIgnore();
+        try {
+            if (!oldIgnore) {
+                OrganizationContextHolder.setIgnoreOrgAndDepartment(true);
+            }
+            DynamicIoImportTask update = new DynamicIoImportTask();
+            update.setProcessed(state.processed.get());
+            update.setSuccess(state.success.get());
+            update.setSkipped(state.skipped.get());
+            update.setFailed(state.failed.get());
+            update.setErrorsJson(JSON.toJSONString(cappedErrors(state.errors)));
+            update.setHeartbeatTime(new Date());
+            if (statusOverride != null) {
+                update.setStatus(statusOverride);
+            }
+            ioImportTaskMapper.update(update, Wrappers.<DynamicIoImportTask>lambdaUpdate()
+                    .eq(DynamicIoImportTask::getId, taskId));
+        } catch (Exception e) {
+            log.warn("导入进度落库失败 taskId={}（下个节流窗口重试）", taskId, e);
+        } finally {
+            if (!oldIgnore) {
+                OrganizationContextHolder.clear();
+            }
+        }
+    }
+
+    /** 收尾：终态 + 结束时间；清心跳（已结束任务不再参与 stale 认领扫描）。上下文口径同 {@link #flushProgress} */
+    private void finishTask(RunState state, String taskId, String taskError) {
+        state.terminalStatus = taskError == null ? DynamicIoImportTask.STATUS_FINISHED : DynamicIoImportTask.STATUS_FAILED;
+        boolean oldIgnore = OrganizationContextHolder.isIgnore();
+        try {
+            if (!oldIgnore) {
+                OrganizationContextHolder.setIgnoreOrgAndDepartment(true);
+            }
+            DynamicIoImportTask update = new DynamicIoImportTask();
+            update.setProcessed(state.processed.get());
+            update.setSuccess(state.success.get());
+            update.setSkipped(state.skipped.get());
+            update.setFailed(state.failed.get());
+            update.setErrorsJson(JSON.toJSONString(cappedErrors(state.errors)));
+            update.setStatus(state.terminalStatus);
+            update.setFinishedTime(new Date());
+            if (taskError != null) {
+                update.setRemark(taskError.length() <= 900 ? taskError : taskError.substring(0, 900));
+            }
+            ioImportTaskMapper.update(update, Wrappers.<DynamicIoImportTask>lambdaUpdate()
+                    .eq(DynamicIoImportTask::getId, taskId)
+                    .set(DynamicIoImportTask::getHeartbeatTime, null));
+        } catch (Exception e) {
+            log.error("导入任务结果落库失败 taskId={}", taskId, e);
+        } finally {
+            if (!oldIgnore) {
+                OrganizationContextHolder.clear();
+            }
+        }
+    }
+
+    private List<String> cappedErrors(List<String> errors) {
+        synchronized (errors) {
+            if (errors.size() <= ERROR_CAP) {
+                return new ArrayList<>(errors);
+            }
+            List<String> capped = new ArrayList<>(errors.subList(0, ERROR_CAP));
+            capped.add("……失败明细超过 " + ERROR_CAP + " 条已截断，失败行总数见 failed 计数");
+            return capped;
+        }
+    }
+
+    /** 文件内查重集合登记（唯一列有值才登记；续跑时对已处理行回放同一口径） */
+    private void markSeenInFile(Set<String> seenInFile, List<String> uniqueCodes, Map<String, Object> row) {
+        for (String code : uniqueCodes) {
+            Object value = row.get(code);
+            if (value != null && !String.valueOf(value).isEmpty()) {
+                seenInFile.add(code + "=" + value);
+            }
+        }
+    }
+
+    /**
+     * 类型转换：键=字段编码，值=原始字符串。convertValue 对空值返回 null——与旧链路一致
+     * （旧解析对空单元格 put(code, null)，checkRequired/buildTitle 均按空值口径处理）。
+     */
+    private Map<String, Object> convertRow(List<DynamicFormColumn> columns, Map<String, Object> row) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            DynamicFormColumn column = columnByCode(columns, entry.getKey());
+            String raw = entry.getValue() == null ? null : String.valueOf(entry.getValue());
+            out.put(entry.getKey(), convertValue(column, raw));
+        }
+        return out;
+    }
+
+    /** 解析 rows_json（PENDING_MAPPING=表头键；RUNNING 后=字段编码键，两阶段统一用同一读取） */
+    private List<Map<String, Object>> parseStoredRows(String rowsJson) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        if (StringUtils.isEmpty(rowsJson)) {
+            return rows;
+        }
+        JSONArray array = JSON.parseArray(rowsJson);
+        if (array == null) {
+            return rows;
+        }
+        for (int i = 0; i < array.size(); i++) {
+            JSONObject row = array.getJSONObject(i);
+            if (row != null) {
+                rows.add(row);
+            }
+        }
+        return rows;
+    }
+
+    /** Excel 解析（不转换、不匹配）：行以「表头原文」为键的原始字符串；示例行跳过 */
+    private List<Map<String, Object>> parseSheet(byte[] fileBytes, List<String> headersOut) throws Exception {
         List<Map<String, Object>> rows = new ArrayList<>();
         try (XSSFWorkbook workbook = new XSSFWorkbook(new java.io.ByteArrayInputStream(fileBytes))) {
             Sheet sheet = workbook.getSheet("数据") != null ? workbook.getSheet("数据") : workbook.getSheetAt(0);
@@ -220,15 +730,12 @@ public class IoDataService {
             if (header == null) {
                 throw new IllegalArgumentException("模板缺少表头行");
             }
-            List<String> headerCodes = new ArrayList<>();
+            List<String> headerTexts = new ArrayList<>();
             for (int i = 0; i < header.getLastCellNum(); i++) {
-                String code = readCellAsString(header.getCell(i));
-                headerCodes.add(code == null ? "" : code.trim());
+                String text = readCellAsString(header.getCell(i));
+                headerTexts.add(text == null ? "" : text.trim());
             }
-            Map<String, String> codeByHeader = new HashMap<>();
-            for (DynamicFormColumn column : columns) {
-                codeByHeader.put(displayCode(column, schemaFields).toLowerCase(), column.getFiledCode());
-            }
+            headersOut.addAll(headerTexts);
             for (int r = 1; r <= sheet.getLastRowNum(); r++) {
                 Row row = sheet.getRow(r);
                 if (row == null) {
@@ -240,182 +747,261 @@ public class IoDataService {
                 }
                 Map<String, Object> data = new LinkedHashMap<>();
                 boolean empty = true;
-                for (int c = 0; c < headerCodes.size(); c++) {
-                    String code = codeByHeader.get(headerCodes.get(c).toLowerCase());
-                    if (code == null) {
+                for (int c = 0; c < headerTexts.size(); c++) {
+                    String text = headerTexts.get(c);
+                    if (text.isEmpty()) {
                         continue;
                     }
                     String raw = readCellAsString(row.getCell(c));
-                    if (raw != null && !raw.isEmpty()) {
+                    if (raw != null && raw.isEmpty()) {
+                        raw = null;
+                    }
+                    if (raw != null) {
                         empty = false;
                     }
-                    data.put(code, convertValue(columnByCode(columns, code), raw, schemaField(schemaFields, headerCodes.get(c).trim())));
+                    data.put(text, raw);
                 }
                 if (!empty) {
                     rows.add(data);
                 }
             }
         }
-
-        int limit = config.getImportLimit() == null ? 5000 : config.getImportLimit();
-        if (rows.size() > limit) {
-            throw new IllegalArgumentException("导入行数 " + rows.size() + " 超过单次上限 " + limit);
-        }
-        String taskId = UUID.randomUUID().toString().replace("-", "");
-        ImportTask task = new ImportTask();
-        task.taskId = taskId;
-        task.formId = formId;
-        task.tableCode = form.getTableCode();
-        task.total = rows.size();
-        task.rows = rows;
-        task.database = database;
-        task.config = config;
-        task.form = form;
-        task.columns = columns;
-        task.schemaFields = schemaFields;
-        tasks.put(taskId, task);
-        importExecutor.submit(() -> runImport(task));
-        return Map.of("taskId", taskId, "total", rows.size());
+        return rows;
     }
 
-    private void runImport(ImportTask task) {
-        // 导入线程缺会话：显式注入组织与数据源上下文（§5.5 同口径），行级范围不适用
-        OrganizationContextHolder.setIgnoreOrgAndDepartment(true);
-        OrganizationContextHolder.setOrganizationId(task.form.getOrganizationId());
-        try {
-            boolean strict = !"N".equals(task.config.getStrictValidate());
-            String dup = StringUtils.isEmpty(task.config.getDupStrategy()) ? "SKIP" : task.config.getDupStrategy();
-            boolean runScript = "Y".equals(task.config.getRunBackscript());
-            JSONObject metaData = task.form.getMetaData();
-            String backScript = null;
-            if (runScript && metaData != null && metaData.getJSONObject("backScript") != null) {
-                backScript = metaData.getJSONObject("backScript").getString("script");
-            }
-            List<String> uniqueCodes = uniqueColumnCodes(task.columns);
-            Set<String> seenInFile = new HashSet<>();
-            // 导入反向解析：导出文件里人员/部门/关联列是文案（昵称/名称/displayField 值），
-            // 写库前还原为存储 id；值本身已是 id 时保持不变
-            ImportRefResolver refResolver = buildImportResolver(task.form, task.schemaFields);
+    /**
+     * 自动匹配建议（表头 → 字段编码）：字段名称（模板表头口径）与字段编码双重对照，
+     * 未命中映射为空串（忽略）。跨环境导出的文件表头=原环境字段名，名称对照是主路径。
+     */
+    private Map<String, String> suggestMapping(List<String> headers, List<DynamicFormColumn> columns,
+                                               List<JSONObject> schemaFields) {
+        Map<String, String> byHeader = new HashMap<>();
+        for (DynamicFormColumn column : columns) {
+            byHeader.putIfAbsent(displayCode(column, schemaFields).toLowerCase(), column.getFiledCode());
+            byHeader.putIfAbsent(column.getFiledCode().toLowerCase(), column.getFiledCode());
+        }
+        Map<String, String> mapping = new LinkedHashMap<>();
+        for (String header : headers) {
+            String code = StringUtils.isEmpty(header) ? null : byHeader.get(header.toLowerCase());
+            mapping.put(header, code == null ? "" : code);
+        }
+        return mapping;
+    }
 
-            for (Map<String, Object> row : task.rows) {
-                int rowIndex = task.processed.get() + 1;
+    /**
+     * 跨环境列结构预检（R2-19）：把上传文件表头与本环境表单结构对照——
+     * matched（表头↔字段）、unmatched（目标环境无此字段，跨环境导入主症状）、
+     * missingRequired（必填列缺失）、warnings（TYPE_MISMATCH 样本试转换失败 / UNIQUE_MISSING 唯一键列缺失）。
+     */
+    private JSONObject buildPrecheck(List<String> headers, List<Map<String, Object>> rows,
+                                     List<DynamicFormColumn> columns, List<JSONObject> schemaFields) {
+        Map<String, String> byHeaderLower = new HashMap<>();
+        for (DynamicFormColumn column : columns) {
+            byHeaderLower.putIfAbsent(displayCode(column, schemaFields).toLowerCase(), column.getFiledCode());
+            byHeaderLower.putIfAbsent(column.getFiledCode().toLowerCase(), column.getFiledCode());
+        }
+        Map<String, DynamicFormColumn> byHeader = new LinkedHashMap<>();
+        Map<String, String> headerByCode = new LinkedHashMap<>();
+        for (String header : headers) {
+            if (StringUtils.isEmpty(header)) {
+                continue;
+            }
+            String code = byHeaderLower.get(header.toLowerCase());
+            if (code != null) {
+                byHeader.put(header, columnByCode(columns, code));
+                headerByCode.putIfAbsent(code, header);
+            }
+        }
+        JSONObject report = new JSONObject();
+        JSONArray matched = new JSONArray();
+        for (Map.Entry<String, DynamicFormColumn> entry : byHeader.entrySet()) {
+            DynamicFormColumn column = entry.getValue();
+            if (column == null) {
+                continue;
+            }
+            JSONObject item = new JSONObject();
+            item.put("header", entry.getKey());
+            item.put("field", column.getFiledCode());
+            item.put("fieldName", column.getFiledName());
+            item.put("fieldType", column.getFiledType());
+            matched.add(item);
+        }
+        report.put("matched", matched);
+        JSONArray unmatched = new JSONArray();
+        for (String header : headers) {
+            if (!StringUtils.isEmpty(header) && !byHeader.containsKey(header)) {
+                JSONObject item = new JSONObject();
+                item.put("header", header);
+                item.put("reason", "目标环境表单没有该字段（跨环境导入常见：两边结构不一致），可忽略或映射到其他字段");
+                unmatched.add(item);
+            }
+        }
+        report.put("unmatched", unmatched);
+        Set<String> mappedCodes = new HashSet<>(headerByCode.keySet());
+        JSONArray missingRequired = new JSONArray();
+        JSONArray warnings = new JSONArray();
+        for (DynamicFormColumn column : columns) {
+            String code = column.getFiledCode();
+            if (DynamicFormColumn.isSystemField(code) || mappedCodes.contains(code)) {
+                continue;
+            }
+            JSONObject schema = schemaField(schemaFields, code);
+            if (isRequiredField(schema)) {
+                JSONObject item = new JSONObject();
+                item.put("field", code);
+                item.put("fieldName", column.getFiledName());
+                item.put("reason", "文件未包含必填字段：strict_validate=Y 时对应行将校验失败");
+                missingRequired.add(item);
+            }
+            if ("Y".equals(column.getUniqueFlag())) {
+                JSONObject item = new JSONObject();
+                item.put("kind", "UNIQUE_MISSING");
+                item.put("field", code);
+                item.put("fieldName", column.getFiledName());
+                item.put("reason", "唯一键列缺失：文件内/库内重复无法识别，重复键策略对该列失效");
+                warnings.add(item);
+            }
+        }
+        report.put("missingRequired", missingRequired);
+        // 类型样本试转换：数值/日期列取前 20 个非空样本，首报一个失败样本即止
+        for (DynamicFormColumn column : columns) {
+            String code = column.getFiledCode();
+            String header = headerByCode.get(code);
+            if (header == null) {
+                continue;
+            }
+            String type = StringUtils.isEmpty(column.getFiledType()) ? "TEXT" : column.getFiledType().toUpperCase();
+            boolean numeric = type.contains("INT") || type.contains("NUMBER") || type.contains("DECIMAL")
+                    || type.contains("DOUBLE") || type.contains("FLOAT");
+            boolean date = type.contains("DATE") || type.contains("TIME");
+            if (!numeric && !date) {
+                continue;
+            }
+            int checked = 0;
+            for (Map<String, Object> row : rows) {
+                Object raw = row.get(header);
+                if (raw == null || String.valueOf(raw).isEmpty()) {
+                    continue;
+                }
                 try {
-                    if (row.isEmpty()) {
-                        task.processed.incrementAndGet();
-                        continue;
-                    }
-                    refResolver.resolve(row);
-                    // 必填校验
-                    if (strict) {
-                        String missing = checkRequired(row, task.schemaFields, task.columns);
-                        if (missing != null) {
-                            throw new IllegalArgumentException("必填字段缺失：" + missing);
-                        }
-                    }
-                    // id 有值 → 更新；唯一列查重
-                    Object rowId = row.get("id");
-                    if (rowId == null || String.valueOf(rowId).isEmpty()) {
-                        row.remove("id");
-                        String dupKey = findDuplicate(task, uniqueCodes, row, seenInFile);
-                        if (dupKey != null) {
-                            switch (dup) {
-                                case "REJECT" -> throw new IllegalArgumentException(
-                                        "唯一键冲突（" + dupKey + "），整批拒绝（dup_strategy=REJECT）");
-                                case "OVERWRITE" -> {
-                                    String existId = locateId(task, uniqueCodes, row);
-                                    if (existId != null) {
-                                        row.put("id", existId);
-                                    } else {
-                                        task.skipped.incrementAndGet();
-                                        task.errors.add("行 " + rowIndex + "：文件内重复，跳过");
-                                        task.processed.incrementAndGet();
-                                        continue;
-                                    }
-                                }
-                                default -> {
-                                    task.skipped.incrementAndGet();
-                                    task.errors.add("行 " + rowIndex + "：唯一键冲突（" + dupKey + "），按 SKIP 跳过");
-                                    task.processed.incrementAndGet();
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-                    // 数据标题 & 工作流表单落草稿（import_flow_mode=NONE，§4.1）
-                    if (metaData != null) {
-                        String dataTitle = FormDataTitleUtils.buildTitle(metaData, row);
-                        if (StringUtils.isNotEmpty(dataTitle)) {
-                            row.put("title", dataTitle);
-                        }
-                    }
-                    if (task.form.getIsWorkflow() != null && task.form.getIsWorkflow() == 1
-                            && !"AUTO_START".equals(task.config.getImportFlowMode())) {
-                        row.put("status", 0);
-                    }
-                    // 落库：sourceTag=IMPORT（联动/DATE_FIELD 注册按 trigger_mode 抑制，§4.2）；
-                    // 导入线程无会话，代理身份=表单创建人（动态表 created_by NOT NULL）
-                    DataWriteAttributes.Snapshot previous = DataWriteAttributes.push(
-                            DataWriteAttributes.SOURCE_IMPORT, 0,
-                            StringUtils.isNotEmpty(task.form.getCreatedBy()) ? task.form.getCreatedBy() : "system-import",
-                            task.form.getDepartmentId(), task.form.getOrganizationId());
-                    try {
-                        if (StringUtils.isNotEmpty(backScript)) {
-                            commonService.saveTableData(task.database, task.tableCode, backScript, row, true);
-                        } else {
-                            dynamicTableService.saveOrUpdate(task.database, task.tableCode, row);
-                        }
-                    } finally {
-                        DataWriteAttributes.restore(previous);
-                    }
-                    task.success.incrementAndGet();
+                    convertValue(column, String.valueOf(raw));
                 } catch (Exception e) {
-                    task.failed.incrementAndGet();
-                    task.errors.add("行 " + rowIndex + "：" + e.getMessage());
-                    log.warn("导入行失败 form={} row={} error={}", task.formId, rowIndex, e.getMessage());
-                } finally {
-                    task.processed.incrementAndGet();
+                    JSONObject item = new JSONObject();
+                    item.put("kind", "TYPE_MISMATCH");
+                    item.put("header", header);
+                    item.put("field", code);
+                    item.put("fieldName", column.getFiledName());
+                    item.put("sample", String.valueOf(raw));
+                    item.put("reason", e.getMessage());
+                    warnings.add(item);
+                    break;
+                }
+                if (++checked >= 20) {
+                    break;
                 }
             }
-        } catch (Exception e) {
-            log.error("导入任务异常 form={}", task.formId, e);
-            task.errors.add("任务异常终止：" + e.getMessage());
-        } finally {
-            task.finished = true;
-            OrganizationContextHolder.clear();
-            log.info("导入任务完成 form={} total={} success={} skipped={} failed={}",
-                    task.formId, task.total, task.success.get(), task.skipped.get(), task.failed.get());
         }
+        report.put("warnings", warnings);
+        return report;
     }
 
-    public Map<String, Object> progress(String taskId) {
-        ImportTask task = tasks.get(taskId);
-        if (task == null) {
-            throw new IllegalArgumentException("导入任务不存在或已过期：" + taskId);
+    /** 可映射字段清单（预检响应用，UI 下拉数据源） */
+    private List<Map<String, Object>> fieldSummaries(List<DynamicFormColumn> columns, List<JSONObject> schemaFields) {
+        List<Map<String, Object>> fields = new ArrayList<>();
+        for (DynamicFormColumn column : columns) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("field", column.getFiledCode());
+            item.put("fieldName", column.getFiledName());
+            item.put("fieldType", column.getFiledType());
+            JSONObject schema = schemaField(schemaFields, column.getFiledCode());
+            item.put("required", isRequiredField(schema));
+            item.put("unique", "Y".equals(column.getUniqueFlag()));
+            fields.add(item);
         }
+        return fields;
+    }
+
+    /** io 配置快照（执行期口径以快照为准：预检到执行期间配置变更不影响在途任务） */
+    private String configSnapshot(DynamicFormIoConfig config) {
+        JSONObject snapshot = new JSONObject();
+        snapshot.put("dupStrategy", config.getDupStrategy());
+        snapshot.put("strictValidate", config.getStrictValidate());
+        snapshot.put("runBackscript", config.getRunBackscript());
+        snapshot.put("importFlowMode", config.getImportFlowMode());
+        snapshot.put("triggerMode", config.getTriggerMode());
+        snapshot.put("importLimit", config.getImportLimit());
+        return snapshot.toJSONString();
+    }
+
+    /** 导入进度轮询（读库：多实例可见，重启不丢） */
+    public Map<String, Object> progress(String taskId) {
+        DynamicIoImportTask entity = requireTask(taskId);
         Map<String, Object> result = new HashMap<>();
         result.put("taskId", taskId);
-        result.put("finished", task.finished);
-        result.put("total", task.total);
-        result.put("processed", task.processed.get());
-        result.put("success", task.success.get());
-        result.put("skipped", task.skipped.get());
-        result.put("failed", task.failed.get());
+        result.put("status", entity.getStatus());
+        result.put("finished", DynamicIoImportTask.STATUS_FINISHED.equals(entity.getStatus())
+                || DynamicIoImportTask.STATUS_FAILED.equals(entity.getStatus()));
+        result.put("total", entity.getTotal());
+        result.put("processed", entity.getProcessed());
+        result.put("success", entity.getSuccess());
+        result.put("skipped", entity.getSkipped());
+        result.put("failed", entity.getFailed());
+        result.put("finishedTime", entity.getFinishedTime());
+        result.put("createdBy", entity.getCreatedBy());
         return result;
     }
 
+    /** 导入记录（最近 20 条，读库：多实例可见的历史痕迹） */
+    public List<Map<String, Object>> listTasks(String formId) {
+        List<DynamicIoImportTask> list = ioImportTaskMapper.selectList(Wrappers.<DynamicIoImportTask>lambdaQuery()
+                .eq(DynamicIoImportTask::getFormId, formId)
+                .orderByDesc(DynamicIoImportTask::getCreatedTime)
+                .last("limit 20"));
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (DynamicIoImportTask entity : list) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("taskId", entity.getId());
+            item.put("status", entity.getStatus());
+            item.put("total", entity.getTotal());
+            item.put("processed", entity.getProcessed());
+            item.put("success", entity.getSuccess());
+            item.put("skipped", entity.getSkipped());
+            item.put("failed", entity.getFailed());
+            item.put("createdBy", entity.getCreatedBy());
+            item.put("createdTime", entity.getCreatedTime());
+            item.put("finishedTime", entity.getFinishedTime());
+            result.add(item);
+        }
+        return result;
+    }
+
+    /** 失败行报告（读库 errors_json，可修改后重新导入） */
     public byte[] buildFailureReport(String taskId) throws Exception {
-        ImportTask task = tasks.get(taskId);
-        if (task == null) {
-            throw new IllegalArgumentException("导入任务不存在或已过期：" + taskId);
+        DynamicIoImportTask entity = requireTask(taskId);
+        List<String> errors = new ArrayList<>();
+        if (!StringUtils.isEmpty(entity.getErrorsJson())) {
+            try {
+                JSONArray array = JSON.parseArray(entity.getErrorsJson());
+                if (array != null) {
+                    for (int i = 0; i < array.size(); i++) {
+                        Object item = array.get(i);
+                        if (item != null) {
+                            errors.add(String.valueOf(item));
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("失败明细解析失败 taskId={}", taskId, e);
+            }
         }
         try (XSSFWorkbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("失败明细");
             Row header = sheet.createRow(0);
             header.createCell(0).setCellValue("行号");
             header.createCell(1).setCellValue("原因");
-            for (int i = 0; i < task.errors.size() && i < 5000; i++) {
+            for (int i = 0; i < errors.size(); i++) {
                 Row row = sheet.createRow(i + 1);
-                String error = task.errors.get(i);
+                String error = errors.get(i);
                 int split = error.indexOf('：');
                 row.createCell(0).setCellValue(split > 0 ? error.substring(0, split) : ("行 " + (i + 1)));
                 row.createCell(1).setCellValue(error);
@@ -425,6 +1011,14 @@ public class IoDataService {
             workbook.write(out);
             return out.toByteArray();
         }
+    }
+
+    private DynamicIoImportTask requireTask(String taskId) {
+        DynamicIoImportTask entity = ioImportTaskMapper.selectById(taskId);
+        if (entity == null) {
+            throw new IllegalArgumentException("导入任务不存在或已过期：" + taskId);
+        }
+        return entity;
     }
 
     // ---------------- 导出 ----------------
@@ -1006,6 +1600,36 @@ public class IoDataService {
         return null;
     }
 
+    /**
+     * 必填判定（R2-19 预检顺带修正）：设计器口径必填在 rules[].required（字符串 "true"，表单保存链路
+     * DynamicFormServiceImpl 归一化），旧代码只读顶层 required 布尔导致设计器表单必填校验从未生效——
+     * 两种口径都认，兼容 API 直存 metaData 的顶层布尔形态。
+     */
+    private boolean isRequiredField(JSONObject schema) {
+        if (schema == null) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(schema.getBoolean("required"))) {
+            return true;
+        }
+        JSONArray rules = schema.getJSONArray("rules");
+        if (rules == null) {
+            return false;
+        }
+        for (int i = 0; i < rules.size(); i++) {
+            JSONObject rule = rules.getJSONObject(i);
+            if (rule == null) {
+                continue;
+            }
+            Object required = rule.get("required");
+            if ((required instanceof String str && "true".equalsIgnoreCase(str.trim()))
+                    || Boolean.TRUE.equals(required)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 模板/导出表头：优先字段名称（友好），查重按编码 */
     private String displayCode(DynamicFormColumn column, List<JSONObject> schemaFields) {
         return StringUtils.isNotEmpty(column.getFiledName()) ? column.getFiledName() : column.getFiledCode();
@@ -1098,7 +1722,7 @@ public class IoDataService {
         }
     }
 
-    private Object convertValue(DynamicFormColumn column, String raw, JSONObject schema) {
+    private Object convertValue(DynamicFormColumn column, String raw) {
         if (raw == null || raw.isEmpty()) {
             return null;
         }
@@ -1130,7 +1754,7 @@ public class IoDataService {
                 continue;
             }
             JSONObject schema = schemaField(schemaFields, column.getFiledCode());
-            if (schema != null && Boolean.TRUE.equals(schema.getBoolean("required"))) {
+            if (isRequiredField(schema)) {
                 Object value = row.get(column.getFiledCode());
                 if (value == null || String.valueOf(value).isEmpty()) {
                     return column.getFiledName() + "(" + column.getFiledCode() + ")";
@@ -1151,7 +1775,7 @@ public class IoDataService {
     }
 
     /** 文件内 + 库内唯一查重（返回首个冲突的描述；库内查询绑定值，杜绝拼接） */
-    private String findDuplicate(ImportTask task, List<String> uniqueCodes, Map<String, Object> row, Set<String> seenInFile) {
+    private String findDuplicate(String database, String tableCode, List<String> uniqueCodes, Map<String, Object> row, Set<String> seenInFile) {
         for (String code : uniqueCodes) {
             Object value = row.get(code);
             if (value == null || String.valueOf(value).isEmpty()) {
@@ -1161,7 +1785,7 @@ public class IoDataService {
             if (!seenInFile.add(fileKey)) {
                 return fileKey + "（文件内重复）";
             }
-            if (locateId(task, uniqueCodes, row) != null) {
+            if (locateId(database, tableCode, uniqueCodes, row) != null) {
                 return fileKey;
             }
         }
@@ -1169,14 +1793,14 @@ public class IoDataService {
     }
 
     /** 按唯一列定位已存在行 id（值绑定查询；返回首个命中） */
-    private String locateId(ImportTask task, List<String> uniqueCodes, Map<String, Object> row) {
+    private String locateId(String database, String tableCode, List<String> uniqueCodes, Map<String, Object> row) {
         for (String code : uniqueCodes) {
             Object value = row.get(code);
             if (value == null || String.valueOf(value).isEmpty()) {
                 continue;
             }
-            List<Map<String, Object>> hits = queryBoundRows(task.database, task.tableCode,
-                    "SELECT `id` FROM `" + task.tableCode + "` WHERE `" + code + "` = #{params.p1} "
+            List<Map<String, Object>> hits = queryBoundRows(database, tableCode,
+                    "SELECT `id` FROM `" + tableCode + "` WHERE `" + code + "` = #{params.p1} "
                             + "AND deleted_flag = 'N' LIMIT 1", value);
             if (!hits.isEmpty() && hits.get(0).get("id") != null) {
                 return String.valueOf(hits.get(0).get("id"));
@@ -1219,25 +1843,5 @@ public class IoDataService {
                 filter.put(entry.getKey(), entry.getValue());
             }
         }
-    }
-
-    /** 导入任务内存态 */
-    private static class ImportTask {
-        String taskId;
-        String formId;
-        String tableCode;
-        String database;
-        int total;
-        volatile boolean finished;
-        final AtomicInteger processed = new AtomicInteger();
-        final AtomicInteger success = new AtomicInteger();
-        final AtomicInteger skipped = new AtomicInteger();
-        final AtomicInteger failed = new AtomicInteger();
-        final List<String> errors = java.util.Collections.synchronizedList(new ArrayList<>());
-        List<Map<String, Object>> rows;
-        DynamicFormIoConfig config;
-        DynamicForm form;
-        List<DynamicFormColumn> columns;
-        List<JSONObject> schemaFields;
     }
 }

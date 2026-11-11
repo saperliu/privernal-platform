@@ -39,6 +39,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -71,7 +72,31 @@ public class IoDataController {
         writeExcel(response, bytes, "import-template-" + formId + ".xlsx");
     }
 
-    @Operation(summary = "上传 Excel 发起异步导入，返回 taskId")
+    @Operation(summary = "上传 Excel 预检（解析+跨环境列结构预检），返回 taskId/预检报告/建议映射")
+    @PreAuthorize(hasPermi = "dynamic:data:import")
+    @Log(title = "动态表数据")
+    @PostMapping("/import/preview/{formId}")
+    public CommonResult<Map<String, Object>> preview(@PathVariable("formId") String formId,
+                                                     @RequestParam("file") MultipartFile file) throws Exception {
+        if (file == null || file.isEmpty()) {
+            return CommonResult.fail("请选择要导入的 Excel 文件");
+        }
+        if (file.getSize() > 10 * 1024 * 1024L) {
+            return CommonResult.fail("文件超过 10MB 上限");
+        }
+        return CommonResult.ok(ioDataService.previewImport(formId, file.getBytes()));
+    }
+
+    @Operation(summary = "确认列映射并启动导入（body: {表头:字段编码}，空串=忽略）")
+    @PreAuthorize(hasPermi = "dynamic:data:import")
+    @Log(title = "动态表数据")
+    @PostMapping("/import/start/{taskId}")
+    public CommonResult<Map<String, Object>> start(@PathVariable("taskId") String taskId,
+                                                   @RequestBody(required = false) Map<String, String> mapping) {
+        return CommonResult.ok(ioDataService.startImport(taskId, mapping));
+    }
+
+    @Operation(summary = "上传 Excel 一步式导入（自动映射；兼容旧调用方，新 UI 走 preview+start）")
     @PreAuthorize(hasPermi = "dynamic:data:import")
     @Log(title = "动态表数据")
     @PostMapping("/import/{formId}")
@@ -86,11 +111,18 @@ public class IoDataController {
         return CommonResult.ok(ioDataService.startImport(formId, file.getBytes()));
     }
 
-    @Operation(summary = "导入进度轮询")
+    @Operation(summary = "导入进度轮询（读库：重启不丢、多实例可见）")
     @PreAuthorize(hasPermi = "dynamic:data:import")
     @GetMapping("/import/progress/{taskId}")
     public CommonResult<Map<String, Object>> progress(@PathVariable("taskId") String taskId) {
         return CommonResult.ok(ioDataService.progress(taskId));
+    }
+
+    @Operation(summary = "导入记录（该表单最近 20 条任务，读库）")
+    @PreAuthorize(hasPermi = "dynamic:data:import")
+    @GetMapping("/import/tasks/{formId}")
+    public CommonResult<List<Map<String, Object>>> tasks(@PathVariable("formId") String formId) {
+        return CommonResult.ok(ioDataService.listTasks(formId));
     }
 
     @Operation(summary = "下载失败行报告（可修改后重新导入）")

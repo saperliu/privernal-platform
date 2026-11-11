@@ -38,8 +38,14 @@ public final class FlowNodeExtUtil {
     /** 抄送节点标记值：ext.nodeKind = cc */
     public static final String NODE_KIND_CC = "cc";
 
-    /** ext 键：节点类别（cc=抄送） */
+    /** 子流程节点标记值：ext.nodeKind = subflow（R2-18，运行时由 FlowSubflowTaskHandler 桥接） */
+    public static final String NODE_KIND_SUBFLOW = "subflow";
+
+    /** ext 键：节点类别（cc=抄送 subflow=子流程） */
     public static final String KEY_NODE_KIND = "nodeKind";
+
+    /** ext 键：子流程编码（nodeKind=subflow 的节点指向的目标流程 flowCode） */
+    public static final String KEY_SUBFLOW_CODE = "subflowCode";
 
     /** ext 键：票签方式（count=绝对数量） */
     public static final String KEY_VOTE_TYPE = "voteType";
@@ -116,6 +122,20 @@ public final class FlowNodeExtUtil {
      */
     public static boolean isCcNode(Node node) {
         return node != null && NODE_KIND_CC.equals(parseExt(node.getExt()).get(KEY_NODE_KIND));
+    }
+
+    /**
+     * 节点是否为子流程节点（R2-18）：审批到达后自动发起子流程并等待其办结
+     */
+    public static boolean isSubflowNode(Node node) {
+        return node != null && NODE_KIND_SUBFLOW.equals(parseExt(node.getExt()).get(KEY_NODE_KIND));
+    }
+
+    /**
+     * 子流程节点判定的 ext 字符串变体（DefJson.nodeList 的 NodeJson 不是引擎 Node 实体）
+     */
+    public static boolean isSubflowNodeByExt(String ext) {
+        return NODE_KIND_SUBFLOW.equals(parseExt(ext).get(KEY_NODE_KIND));
     }
 
     /**
