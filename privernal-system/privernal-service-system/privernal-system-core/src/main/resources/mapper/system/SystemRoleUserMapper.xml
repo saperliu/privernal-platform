@@ -18,10 +18,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="remark"    column="remark"    />
         <result property="roleId"    column="role_id"    />
         <result property="userId"    column="user_id"    />
+        <result property="expireTime"    column="expire_time"    />
     </resultMap>
 
     <sql id="selectSystemRoleUserVo">
-        select tenant_id, revision, created_by, created_time, updated_by, updated_time, deleted_flag, deleted_by, deleted_time, id, remark, role_id, user_id from system_role_user as roleUser
+        select tenant_id, revision, created_by, created_time, updated_by, updated_time, deleted_flag, deleted_by, deleted_time, id, remark, role_id, user_id, expire_time from system_role_user as roleUser
     </sql>
 
     <select id="selectSystemRoleUserList" parameterType="com.privernal.system.filter.SystemRoleUserFilterDTO" resultMap="SystemRoleUserResult">
@@ -58,6 +59,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="remark"    column="remark"    />
         <result property="roleId"    column="role_id"    />
         <result property="userId"    column="user_id"    />
+        <result property="expireTime"    column="expire_time"    />
     </resultMap>
     <select id="selectRoleUserByUserIdAndRoleId" parameterType="String" resultMap="SystemRoleUserDTOResult">
         <include refid="selectSystemRoleUserVo"/>
@@ -82,6 +84,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="roleId"    column="role_id"    />
         <result property="roleName"    column="role_name"    />
         <result property="userId"    column="user_id"    />
+        <result property="expireTime"    column="expire_time"    />
     </resultMap>
     <select id="selectAuthRoleByUserId" parameterType="String" resultMap="SystemRoleUserDTO">
 
@@ -91,7 +94,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             roleUser.remark,
             roleUser.role_id,
             role.role_name,
-            roleUser.user_id
+            roleUser.user_id,
+            roleUser.expire_time
         from system_role_user as roleUser
         left join system_role as role on roleUser.role_id = role.id
 
@@ -99,4 +103,33 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             roleUser.deleted_flag = 'N' and role.organization_id = #{organizationId}  and roleUser.user_id = #{userId}
         </where>
     </select>
+
+    <!-- R1-8 授权有效期：已到期未回收的授权行（回收扫描消费；跨组织，故忽略数据范围） -->
+    <select id="selectExpiredActiveList" resultMap="SystemRoleUserResult">
+        <include refid="selectSystemRoleUserVo"/>
+        <where>
+            deleted_flag = 'N' and expire_time is not null
+            and expire_time &lt;= <include refid="privernal.dialect.nowS"/>
+        </where>
+    </select>
+
+    <!-- R1-8 回收后重授：按角色查授权行（含已软删；MyBatis-Plus wrapper 查询会被逻辑删除条件挡住，故走 XML） -->
+    <select id="selectListByRoleIdIncludingDeleted" resultMap="SystemRoleUserResult">
+        <include refid="selectSystemRoleUserVo"/>
+        <where>
+            role_id = #{roleId}
+        </where>
+    </select>
+
+    <!-- R1-8 回收后重授：复活已软删的授权行（清删除痕迹与旧有效期，避免 (role_id,user_id) 唯一键冲突） -->
+    <update id="reviveById">
+        update system_role_user
+        set deleted_flag = 'N',
+            deleted_by = null,
+            deleted_time = null,
+            expire_time = null,
+            updated_by = #{updatedBy},
+            updated_time = <include refid="privernal.dialect.nowS"/>
+        where id = #{id}
+    </update>
 </mapper>

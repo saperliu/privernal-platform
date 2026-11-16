@@ -91,6 +91,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where m.status = 1  and m.app_menu=0 and r.status = 1 and orgm.status=1
           and  orgm.deleted_flag='N'   and r.deleted_flag='N' and m.deleted_flag ='N' and rm.deleted_flag ='N' and ur.deleted_flag ='N'
           and ur.user_id = #{userId} and orgm.organization_id=#{organizationId} and r.organization_id=#{organizationId}
+          and (ur.expire_time is null or ur.expire_time &gt; <include refid="privernal.dialect.nowS"/>)
     </select>
 
     <select id="selectRoutersTreeByUserId" parameterType="String" resultMap="SystemMenuResult">
@@ -116,6 +117,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where u.id = #{userId} and orgm.organization_id =#{organizationId}  and menu.app_menu=0 and menu.visible=1 and orgm.status=1
           and  orgm.deleted_flag='N' and menu.deleted_flag = 'N' and ro.deleted_flag = 'N' and rm.deleted_flag = 'N' and ur.deleted_flag = 'N' and u.deleted_flag = 'N'
           and menu.menu_type in ('M', 'C') and menu.status = 1  AND ro.status = 1
+          and (ur.expire_time is null or ur.expire_time &gt; <include refid="privernal.dialect.nowS"/>)
         order by menu.parent_id, menu.order_num desc
     </select>
 
@@ -140,6 +142,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
                  left join system_role ro on ur.role_id = ro.id
         where ur.user_id = #{userId} and orgm.organization_id =#{organizationId}  and menu.app_menu=0 and orgm.status=1
           and  orgm.deleted_flag='N' and menu.status = 1 and menu.deleted_flag = 'N' AND ro.status = 1 and ro.deleted_flag = 'N' and rm.deleted_flag = 'N' and ur.deleted_flag = 'N'
+          and (ur.expire_time is null or ur.expire_time &gt; <include refid="privernal.dialect.nowS"/>)
         order by menu.parent_id, menu.order_num desc
     </select>
 
@@ -208,6 +211,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where u.id = #{userId} and orgm.organization_id =#{organizationId} and menu.app_menu=1 and orgm.status=1
           and  orgm.deleted_flag='N' and menu.menu_type = 'M' and menu.status = 1
           and menu.deleted_flag = 'N' AND ro.status = 1 and ro.deleted_flag = 'N' and rm.deleted_flag = 'N' and ur.deleted_flag = 'N' and u.deleted_flag = 'N'
+          and (ur.expire_time is null or ur.expire_time &gt; <include refid="privernal.dialect.nowS"/>)
         order by menu.parent_id, menu.order_num desc
     </select>
 
@@ -268,6 +272,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             orgm.organization_id =#{organizationId} and appm.app_id = #{appId} and menu.app_menu=0 and orgm.status=1
              and  orgm.deleted_flag='N' and menu.status = 1 and menu.deleted_flag = 'N' AND ro.status = 1
              and ro.deleted_flag = 'N' and rm.deleted_flag = 'N' and ur.deleted_flag = 'N' and appm.deleted_flag = 'N'
+             and (ur.expire_time is null or ur.expire_time &gt; <include refid="privernal.dialect.nowS"/>)
             <if test="userId != null and userId != ''">
                 and ur.user_id = #{userId}
             </if>

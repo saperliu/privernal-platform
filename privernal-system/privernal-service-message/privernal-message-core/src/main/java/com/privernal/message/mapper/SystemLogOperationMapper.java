@@ -20,6 +20,7 @@ import com.privernal.common.datascope.annotation.PrivernalDataScope;
 import com.privernal.common.mybatis.mapper.PrivernalMapper;
 import com.privernal.message.domain.SystemLogOperation;
 import com.privernal.message.dto.SystemLogOperationDTO;
+import com.privernal.message.dto.SystemPermissionAuditDTO;
 import com.privernal.message.filter.SystemLogOperationFilterDTO;
 
 import java.util.List;
@@ -41,5 +42,14 @@ public interface SystemLogOperationMapper extends PrivernalMapper<SystemLogOpera
      */
     @PrivernalDataScope(mainAlias = "systemLogOperation", permission = "message:systemLogOperation:list")
     public List<SystemLogOperationDTO> selectSystemLogOperationList(SystemLogOperationFilterDTO systemLogOperation);
+
+    /**
+     * R1-8 权限审计报表：权限相关变更日志（role/roleUser/roleMenu/roleUserDept/user/userGroup/移交/代理）
+     *
+     * @param systemLogOperation 操作日志过滤条件
+     * @return 权限审计行集合
+     */
+    @PrivernalDataScope(mainAlias = "systemLogOperation", permission = "system:permissionAudit:list")
+    public List<SystemPermissionAuditDTO> selectPermissionAuditList(SystemLogOperationFilterDTO systemLogOperation);
 
 }

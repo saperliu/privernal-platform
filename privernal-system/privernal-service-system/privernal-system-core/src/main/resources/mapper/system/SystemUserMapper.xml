@@ -109,7 +109,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="_databaseId == 'sqlserver'">
             select top 1 count(1) from system_user_base as user1 where login_name = #{loginName}
         </if>
-
+        <if test="_databaseId == 'sqlite'">
+            select count(1) from system_user_base as user1 where login_name = #{loginName} limit 1
+        </if>
     </select>
 
     <select id="checkPhoneUnique" parameterType="String" resultMap="SystemUserResult">
@@ -119,6 +121,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             </when>
             <when test="_databaseId =='sqlserver'">
                 select  top 1 id, phone from system_user_base as user1 where phone = #{phoneNumber} and  deleted_flag = 'N'
+            </when>
+            <when test="_databaseId == 'sqlite'">
+                select id, phone from system_user_base as user1 where phone = #{phoneNumber} and  deleted_flag = 'N' limit 1
             </when>
         </choose>
 
@@ -131,7 +136,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="_databaseId == 'sqlserver'">
             select  top 1 id, email from system_user_base as user1 where email = #{email} and  deleted_flag = 'N'
         </if>
-
+        <if test="_databaseId == 'sqlite'">
+            select id, email from system_user_base as user1 where email = #{email} and  deleted_flag = 'N' limit 1
+        </if>
     </select>
 
     <update id="updateUserAvatar" >

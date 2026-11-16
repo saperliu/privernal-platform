@@ -95,6 +95,9 @@ public class SystemTaskRegistrar implements ApplicationRunner {
         // P2-B：DATE_FIELD 每日全量差量重算（写入钩子遗漏的兜底；凌晨低峰执行）
         registerCronJob(orgId, "sys:date-field-recalc", "date-field-recalc",
                 "0 30 1 * * ?", "date-field-recalc");
+        // R1-8 权限治理①：角色授权到期回收扫描（登录装配已实时过滤，此处做数据面软删收尾+会话快照刷新）
+        registerFixedDelay(orgId, "sys:role-auth-expire-recycle", "role-auth-expire-recycle", 300,
+                cn.hutool.json.JSONUtil.createObj().set("bean", "role-auth-expire-recycle"));
     }
 
     private void registerFixedDelay(String orgId, String bizKey, String code, int intervalSeconds, Object config) {

@@ -20,6 +20,7 @@ import com.privernal.system.domain.SystemRoleUser;
 import com.privernal.system.dto.SystemRoleUserDTO;
 import com.privernal.system.filter.SystemRoleUserFilterDTO;
 
+import java.util.Date;
 import java.util.List;
 
 /**
@@ -69,6 +70,15 @@ public interface ISystemRoleUserService {
      * @return 结果
      */
     public int updateSystemRoleUser(SystemRoleUser systemRoleUser);
+
+    /**
+     * R1-8 授权有效期：设置/清除授权有效期（expireTime=null 即恢复永久授权）
+     *
+     * @param id         角色与用户关系主键
+     * @param expireTime 有效期（null=永久）
+     * @return 结果
+     */
+    public int updateExpireTime(String id, Date expireTime);
 
     /**
      * 批量删除角色与用户关系

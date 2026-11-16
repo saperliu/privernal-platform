@@ -2053,6 +2053,7 @@ CREATE TABLE `system_role_user` (
   `remark` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT '备注',
   `role_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '角色ID',
   `user_id` varchar(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL COMMENT '用户ID',
+  `expire_time` datetime DEFAULT NULL COMMENT '授权有效期（NULL=永久，到期后装配过滤+回收扫描软删）',
   PRIMARY KEY (`id`) USING BTREE,
   UNIQUE KEY `role_user_idx` (`role_id`,`user_id`) USING BTREE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin ROW_FORMAT=COMPACT COMMENT='角色拥有的用户';
@@ -3174,3 +3175,10 @@ VALUES ('1866300000000000008','1866100000000000008',1,'16663888968888889','syste
 INSERT INTO `system_role_menu` (`id`,`role_id`,`menu_id`,`tenant_id`,`revision`,`created_by`,`created_time`,`deleted_flag`)
 VALUES ('18662000000000000018','12263522227777777','1866100000000000008','system-default',1,'SYSTEM','2026-11-12 00:00:00','N'),
        ('18662000000000000088','12263567888888','1866100000000000008','system-default',1,'SYSTEM','2026-11-12 00:00:00','N');
+
+-- R1-8 权限治理：权限审计页菜单（平台管理组下；报表覆盖 role/roleUser/roleMenu/roleUserDept/user/handover/delegate 变更日志
+-- 与人×应用×数据范围权限台账导出；授权由升级脚本 CROSS JOIN 段与全新安装下方授权段覆盖）
+INSERT INTO `system_menu` (`id`,`menu_name`,`menu_code`,`order_num`,`visible`,`path`,`menu_type`,`permission`,`status`,`icon`,`app_menu`,`component`,`params`,`is_frame`,`is_cache`,`parent_id`,`organization_id`,`tenant_id`,`revision`,`created_by`,`created_time`,`deleted_flag`)
+VALUES ('r18-permission-audit-menu','权限审计','system_permission-audit',195,1,'/system/permission-audit','C','system:permissionAudit:list',1,'icon-default',0,'self',NULL,0,0,'1798986040628969473','16663888968888889','system-default',1,'188666666666','2026-11-12 00:00:00',NULL,NULL,NULL,NULL,NULL,'N');
+INSERT INTO `system_app_menu` (`id`,`app_id`,`menu_id`,`status`,`organization_id`,`tenant_id`,`revision`,`created_by`,`created_time`,`deleted_flag`)
+VALUES ('r18-permission-audit-appmenu','1768482874137485238','r18-permission-audit-menu',1,'16663888968888889','system-default',1,'188666666666','2026-11-12 00:00:00','N');

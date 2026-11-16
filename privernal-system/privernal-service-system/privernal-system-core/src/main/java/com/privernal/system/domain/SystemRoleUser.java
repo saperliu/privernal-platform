@@ -21,6 +21,8 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import lombok.Data;
 
+import java.util.Date;
+
 /**
  * 角色与用户关系对象 system_role_user
  *
@@ -45,6 +47,10 @@ public class SystemRoleUser extends BaseEntity {
      * 用户ID
      */
     private String userId;
+    /**
+     * 授权有效期（NULL=永久；到期后登录装配过滤+回收扫描软删）R1-8
+     */
+    private Date expireTime;
 
     /**
      * 是否已经存在，非存储字段

@@ -70,4 +70,28 @@ public interface SystemRoleUserMapper extends PrivernalMapper<SystemRoleUser> {
      */
     public List<SystemRoleUserDTO> selectAuthRoleByUserId(@Param("userId") String userId, @Param("organizationId") String organizationId);
 
+    /**
+     * R1-8 授权有效期：已到期未回收的授权行（回收扫描消费；跨组织）
+     *
+     * @return 已到期授权行集合
+     */
+    public List<SystemRoleUser> selectExpiredActiveList();
+
+    /**
+     * R1-8 回收后重授：按角色查授权行（含已软删，用于复活而不是撞唯一键）
+     *
+     * @param roleId 角色ID
+     * @return 授权行集合（含已删除）
+     */
+    public List<SystemRoleUser> selectListByRoleIdIncludingDeleted(@Param("roleId") String roleId);
+
+    /**
+     * R1-8 回收后重授：复活已软删的授权行（清删除痕迹与旧有效期）
+     *
+     * @param id        授权行主键
+     * @param updatedBy 操作人
+     * @return 结果
+     */
+    public int reviveById(@Param("id") String id, @Param("updatedBy") String updatedBy);
+
 }

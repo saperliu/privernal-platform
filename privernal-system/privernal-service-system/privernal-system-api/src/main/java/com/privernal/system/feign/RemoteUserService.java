@@ -173,6 +173,13 @@ public interface RemoteUserService {
     public CommonResult<SystemUserDTO> findUserById(@RequestParam("userId") String userId, @RequestHeader(Constants.SERVICE_REQUEST) String request);
 
     /**
+     * R1-8 权限审计报表：用户/角色名称批量解析
+     */
+    @PostMapping("/inner/system/permissionAudit/resolveNames")
+    @ResponseBody
+    public CommonResult<RemoteNameResolveResultDTO> resolveNames(@RequestBody RemoteNameResolveDTO resolveDTO, @RequestHeader(Constants.SERVICE_REQUEST) String request);
+
+    /**
      * 获取用户信息
      * 工作流批量查询用户信息,根据部门
      */

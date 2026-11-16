@@ -129,4 +129,15 @@ public class SystemRoleUserController extends BaseController {
     public CommonResult<Object> addBatch(@RequestBody SystemRoleUserDTO systemRoleUserDTO) {
         return toAjax(systemRoleUserService.insertBatchSystemRoleUser(systemRoleUserDTO));
     }
+
+    /**
+     * R1-8 授权有效期：设置/清除成员授权有效期（expireTime=null 即恢复永久授权）
+     */
+    @Operation(summary = "设置授权有效期", description = "设置/清除成员授权有效期（expireTime=null 即恢复永久授权）")
+    @PreAuthorize(hasPermi = "system:roleUser:edit")
+    @Log(title = "角色与用户关系-授权有效期", operationType = OperationType.UPDATE)
+    @PutMapping(value = "/back/system/roleUser/expire")
+    public CommonResult<Object> expire(@RequestBody SystemRoleUserDTO systemRoleUserDTO) {
+        return toAjax(systemRoleUserService.updateExpireTime(systemRoleUserDTO.getId(), systemRoleUserDTO.getExpireTime()));
+    }
 }

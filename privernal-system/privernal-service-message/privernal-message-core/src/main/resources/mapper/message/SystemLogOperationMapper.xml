@@ -150,5 +150,42 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by systemLogOperation.created_time desc
     </select>
 
+    <!-- R1-8 权限审计报表：权限相关变更（角色/角色用户/角色菜单/服务部门/用户/用户组/离职移交/流程代理）。
+         与 list 同构，仅追加 URL 前缀过滤；删除类记录的对象 id 在 operation_url 里。 -->
+    <resultMap type="com.privernal.message.dto.SystemPermissionAuditDTO" id="SystemPermissionAuditResult" extends="SystemLogOperationResult"/>
+
+    <select id="selectPermissionAuditList" parameterType="com.privernal.message.filter.SystemLogOperationFilterDTO" resultMap="SystemPermissionAuditResult">
+        <include refid="selectSystemLogOperationVo"/>
+        <where>
+            systemLogOperation.deleted_flag = 'N'
+            and (
+                systemLogOperation.operation_url like '/back/system/role%'
+                or systemLogOperation.operation_url like '/back/system/user%'
+                or systemLogOperation.operation_url like '/back/flow/task/handover%'
+                or systemLogOperation.operation_url like '/back/flow/delegate%'
+            )
+            <if test="name != null  and name != ''">and systemLogOperation.name like concat('%', #{name}, '%')</if>
+            <if test="operationType != null  and operationType != ''">and systemLogOperation.operation_type = #{operationType}</if>
+            <if test="status != null ">and systemLogOperation.status = #{status}</if>
+            <if test="operationPerson != null  and operationPerson != ''">and systemLogOperation.operation_person like concat('%', #{operationPerson}, '%')</if>
+            <if test="organizationId != null  and organizationId != ''">and systemLogOperation.organization_id = #{organizationId}</if>
+            <if test="parameters.beginDate != null and parameters.beginDate != '' and parameters.endDate != null and parameters.endDate != ''">
+                and systemLogOperation.created_time between #{parameters.beginDate} and #{parameters.endDate}
+            </if>
+            <if test="keywords!=null and keywords.length>0">
+                and
+                <foreach collection="keywords" item="item" open="(" separator="and" close=")">
+                    (
+                    systemLogOperation.operation_url like concat('%', #{item}, '%')
+                    or systemLogOperation.operation_person like concat('%', #{item}, '%')
+                    or systemLogOperation.name like concat('%', #{item}, '%')
+                    or systemLogOperation.operation_param like concat('%', #{item}, '%')
+                    )
+                </foreach>
+            </if>
+        </where>
+        order by systemLogOperation.created_time desc
+    </select>
+
 
 </mapper>

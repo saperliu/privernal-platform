@@ -56,6 +56,14 @@ public interface ISystemLogOperationService {
     public List<SystemLogOperationDTO> selectSystemLogOperationList(SystemLogOperationFilterDTO systemLogOperation);
 
     /**
+     * R1-8 权限审计报表：权限相关变更日志（含动作归类与对象名称解析富化）
+     *
+     * @param systemLogOperation 操作日志过滤条件
+     * @return 权限审计行集合
+     */
+    public List<com.privernal.message.dto.SystemPermissionAuditDTO> selectPermissionAuditList(SystemLogOperationFilterDTO systemLogOperation);
+
+    /**
      * 新增操作日志
      *
      * @param systemLogOperation 操作日志

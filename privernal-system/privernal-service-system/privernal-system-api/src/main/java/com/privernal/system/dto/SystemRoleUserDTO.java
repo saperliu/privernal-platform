@@ -58,6 +58,12 @@ public class SystemRoleUserDTO extends BaseDTO {
     private String userId;
 
     /**
+     * 授权有效期（NULL=永久）R1-8
+     */
+    @Schema(description = "授权有效期（NULL=永久）")
+    private java.util.Date expireTime;
+
+    /**
      * 登录名
      */
     @Schema(description = "登录名")

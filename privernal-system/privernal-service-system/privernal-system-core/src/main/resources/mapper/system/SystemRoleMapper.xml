@@ -168,6 +168,7 @@
         WHERE role.deleted_flag = 'N'
           and role.status = 1
           and ru.user_id = #{userId}
+          and (ru.expire_time is null or ru.expire_time &gt; <include refid="privernal.dialect.nowS"/>)
     </select>
 
 
@@ -205,6 +206,7 @@
           and role.status = 1
           and ru.user_id = #{userId}
           and role.organization_id = #{organizationId}
+          and (ru.expire_time is null or ru.expire_time &gt; <include refid="privernal.dialect.nowS"/>)
     </select>
 
     <resultMap type="com.privernal.system.dto.SystemRoleUserDTO" id="SystemRoleUserDTO">
@@ -227,10 +229,11 @@
         <result property="phone"    column="phone"    />
         <result property="status"    column="status"    />
         <result property="departmentName" column="deptName"/>
+        <result property="expireTime"    column="expire_time"    />
     </resultMap>
 
     <select id="selectSystemUserByRoleList" parameterType="String" resultMap="SystemRoleUserDTO">
-        select roleUser.created_by, roleUser.created_time, roleUser.updated_by, roleUser.updated_time, roleUser.id, roleUser.user_id, roleUser.role_id,
+        select roleUser.created_by, roleUser.created_time, roleUser.updated_by, roleUser.updated_time, roleUser.id, roleUser.user_id, roleUser.role_id, roleUser.expire_time,
         user1.remark, user1.login_name, user1.status,
         user1.nick_name, user1.email, user1.phone, dept.dept_name as deptName
         from system_role_user as roleUser

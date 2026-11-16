@@ -105,6 +105,9 @@ public class SystemUserServiceImpl implements ISystemUserService {
     @Autowired
     private SystemUserAppMenuMapper systemUserAppMenuMapper;
 
+    @Autowired
+    private org.springframework.context.ApplicationEventPublisher applicationEventPublisher;
+
     /**
      * 查询用户
      *
@@ -250,7 +253,15 @@ public class SystemUserServiceImpl implements ISystemUserService {
             systemUserDepartmentMapper.insert(userDepartment);
         }
 
+        // R1-8 离职调岗联动：记录停用前状态（停用→回收授权/失效代理/踢会话，见 disableUserLinkage）
+        SystemUser beforeUser = systemUserMapper.selectById(userId);
+
         systemUserMapper.updateById(systemUser);
+
+        if (beforeUser != null && !UserConstants.USER_STATUS_DISABLE.equals(beforeUser.getStatus())
+                && UserConstants.USER_STATUS_DISABLE.equals(systemUser.getStatus())) {
+            disableUserLinkage(userId);
+        }
 
         SystemUserServiceOrgFilterDTO filterDTO = new SystemUserServiceOrgFilterDTO();
         filterDTO.setUserId(systemUser.getId());
@@ -271,6 +282,42 @@ public class SystemUserServiceImpl implements ISystemUserService {
             return 0;
         }
 
+    }
+
+    /**
+     * R1-8 离职调岗联动：停用即收权。
+     * ① 回收全部角色授权（连带服务部门授权行，软删口径与成员删除一致）；
+     * ② 发布停用事件供跨模块联动（流程代理规则失效等，同事务）；
+     * ③ 踢会话使停用立即生效。
+     * 待办转办由「离职移交」（flow /task/handover）前置完成；重新启用后如需授权须重授。
+     */
+    private void disableUserLinkage(String userId) {
+        List<SystemRoleUser> roleUsers = systemRoleUserMapper.selectSystemRoleUserByUserId(userId);
+        int recycled = 0;
+        if (roleUsers != null) {
+            for (SystemRoleUser roleUser : roleUsers) {
+                List<SystemRoleUserDept> deptList =
+                        systemRoleUserDeptMapper.selectSystemRoleUserDeptByRoleUserId(roleUser.getId());
+                if (deptList != null) {
+                    for (SystemRoleUserDept roleUserDept : deptList) {
+                        systemRoleUserDeptMapper.deleteFillById(roleUserDept.getId());
+                    }
+                }
+                systemRoleUserMapper.deleteFillById(roleUser.getId());
+                recycled++;
+            }
+        }
+        try {
+            applicationEventPublisher.publishEvent(new com.privernal.system.event.UserAccountDisabledEvent(userId));
+        } catch (Exception e) {
+            log.warn("[R1-8] 用户停用事件联动失败 userId={}：{}", userId, e.getMessage());
+        }
+        try {
+            cn.dev33.satoken.stp.StpUtil.logout(userId);
+        } catch (Exception e) {
+            log.warn("[R1-8] 停用踢会话失败 userId={}：{}", userId, e.getMessage());
+        }
+        log.info("[R1-8] 用户停用联动完成：回收 {} 条角色授权 userId={}", recycled, userId);
     }
 
     /**

@@ -45,4 +45,13 @@ public interface FlowUserDelegateMapper extends PrivernalMapper<FlowUserDelegate
      * 查询指定代理人当前生效的被代理用户id（待办可见性扩展用）
      */
     List<String> selectDelegatedUserIdsByAgent(@Param("agentId") String agentId, @Param("now") Date now);
+
+    /**
+     * R1-8 离职停用联动：停用即失效其作为被代理人/代理人的全部规则（软删）
+     *
+     * @param userId 被停用用户id
+     * @param now    停用时间
+     * @return 失效条数
+     */
+    int disableByUserId(@Param("userId") String userId, @Param("now") Date now);
 }

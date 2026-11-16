@@ -28,4 +28,16 @@
         AND (end_time IS NULL OR end_time &gt;= #{now})
         ORDER BY created_time ASC
     </select>
+
+    <!-- R1-8 离职停用联动：停用即失效其作为被代理人/代理人的全部规则（软删口径与规则删除一致） -->
+    <update id="disableByUserId">
+        UPDATE flow_user_delegate
+        SET deleted_flag = 'Y',
+            deleted_by = 'system-r18',
+            deleted_time = #{now},
+            updated_by = 'system-r18',
+            updated_time = #{now}
+        WHERE deleted_flag = 'N'
+          AND (user_id = #{userId} OR agent_id = #{userId})
+    </update>
 </mapper>

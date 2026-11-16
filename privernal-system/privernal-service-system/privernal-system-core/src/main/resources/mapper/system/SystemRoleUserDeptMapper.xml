@@ -103,7 +103,6 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="organizationId" column="organization_id"/>
         <result property="roleUserId" column="role_user_id"/>
         <result property="roleUserDeptId" column="role_user_dept_id"/>
-        <result property="roleUserDeptId" column="auth_way"/>
     </resultMap>
 
     <select id="selectSystemDeptByUserIdAndRoleId" parameterType="String" resultMap="SystemDepartmentResult">

@@ -2269,6 +2269,7 @@ CREATE TABLE IF NOT EXISTS system_role_user (
   remark TEXT,
   role_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
+  expire_time TEXT,
   PRIMARY KEY (id),
   CONSTRAINT role_user_idx UNIQUE (role_id, user_id)
 );
@@ -3286,3 +3287,10 @@ VALUES ('1866300000000000008','1866100000000000008',1,'16663888968888889','syste
 INSERT OR IGNORE INTO system_role_menu (id,role_id,menu_id,tenant_id,revision,created_by,created_time,deleted_flag)
 VALUES ('18662000000000000018','12263522227777777','1866100000000000008','system-default',1,'SYSTEM','2026-11-12 00:00:00','N'),
        ('18662000000000000088','12263567888888','1866100000000000008','system-default',1,'SYSTEM','2026-11-12 00:00:00','N');
+
+-- R1-8 权限治理：权限审计页菜单（平台管理组下；报表覆盖 role/roleUser/roleMenu/roleUserDept/user/handover/delegate 变更日志
+-- 与人×应用×数据范围权限台账导出；授权由下方授权段覆盖）
+INSERT INTO `system_menu` (`id`,`menu_name`,`menu_code`,`order_num`,`visible`,`path`,`menu_type`,`permission`,`status`,`icon`,`app_menu`,`component`,`params`,`is_frame`,`is_cache`,`parent_id`,`organization_id`,`tenant_id`,`revision`,`created_by`,`created_time`,`deleted_flag`)
+VALUES ('r18-permission-audit-menu','权限审计','system_permission-audit',195,1,'/system/permission-audit','C','system:permissionAudit:list',1,'icon-default',0,'self',NULL,0,0,'1798986040628969473','16663888968888889','system-default',1,'188666666666','2026-11-12 00:00:00','N');
+INSERT INTO `system_app_menu` (`id`,`app_id`,`menu_id`,`status`,`organization_id`,`tenant_id`,`revision`,`created_by`,`created_time`,`deleted_flag`)
+VALUES ('r18-permission-audit-appmenu','1768482874137485238','r18-permission-audit-menu',1,'16663888968888889','system-default',1,'188666666666','2026-11-12 00:00:00','N');

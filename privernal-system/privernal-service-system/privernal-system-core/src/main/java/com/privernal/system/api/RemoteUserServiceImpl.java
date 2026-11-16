@@ -99,6 +99,9 @@ public class RemoteUserServiceImpl implements RemoteUserService {
     @Autowired
     private com.privernal.common.security.service.PasswordDigestSealer passwordDigestSealer;
 
+    @Autowired
+    private com.privernal.system.support.PermissionAuditSupport permissionAuditSupport;
+
     @Override
     public CommonResult<UserInfo> getUserInfo(String username, String request) {
         //登录使用，此时未登录，去掉组织的限制
@@ -279,6 +282,22 @@ public class RemoteUserServiceImpl implements RemoteUserService {
             SystemUserDTO systemUserDTO = new SystemUserDTO();
             BeanUtils.copyProperties(systemUser, systemUserDTO);
             return CommonResult.ok(systemUserDTO);
+        } finally {
+            OrganizationContextHolder.setIgnore(oldIgnore);
+            OrganizationContextHolder.clear();
+        }
+    }
+
+    /**
+     * R1-8 权限审计报表：用户/角色名称批量解析（HTTP 端点在 SystemPermissionAuditController）
+     */
+    @Override
+    public CommonResult<com.privernal.system.dto.RemoteNameResolveResultDTO> resolveNames(
+            com.privernal.system.dto.RemoteNameResolveDTO resolveDTO, String request) {
+        Boolean oldIgnore = OrganizationContextHolder.isIgnore();
+        try {
+            OrganizationContextHolder.setIgnore(true);
+            return CommonResult.ok(permissionAuditSupport.resolveNames(resolveDTO));
         } finally {
             OrganizationContextHolder.setIgnore(oldIgnore);
             OrganizationContextHolder.clear();

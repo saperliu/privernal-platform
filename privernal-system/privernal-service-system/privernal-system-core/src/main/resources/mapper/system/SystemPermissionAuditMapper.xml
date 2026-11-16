@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.privernal.system.mapper.SystemPermissionAuditMapper">
+
+    <resultMap type="com.privernal.system.dto.PermissionMatrixRowDTO" id="PermissionMatrixRowResult">
+        <result property="userId"       column="user_id"      />
+        <result property="loginName"    column="login_name"   />
+        <result property="nickName"     column="nick_name"    />
+        <result property="roleId"       column="role_id"      />
+        <result property="roleName"     column="role_name"    />
+        <result property="appId"        column="app_id"       />
+        <result property="appName"      column="app_name"     />
+        <result property="permission"   column="permission"   />
+        <result property="dataScope"    column="data_scope"   />
+        <result property="expireTime"   column="expire_time"  />
+    </resultMap>
+
+    <!-- R1-8 权限治理②：人 × 角色 × 应用 × 权限 × 数据范围 台账。
+         仅统计生效中的授权：角色启用未删、授权行未删未到期、用户未停用未删；
+         role_menu 行缺失的应用授权（app 只在 role_menu 上带 app_id）自然不出现。 -->
+    <select id="selectPermissionMatrix" parameterType="com.privernal.system.filter.PermissionMatrixFilterDTO" resultMap="PermissionMatrixRowResult">
+        select u.id           as user_id,
+               u.login_name   as login_name,
+               u.nick_name    as nick_name,
+               r.id           as role_id,
+               r.role_name    as role_name,
+               rm.app_id      as app_id,
+               a.app_name     as app_name,
+               rm.permission  as permission,
+               rm.data_scope  as data_scope,
+               ru.expire_time as expire_time
+        from system_role_user ru
+            inner join system_user_base u on u.id = ru.user_id and u.deleted_flag = 'N'
+            inner join system_role r on r.id = ru.role_id and r.deleted_flag = 'N' and r.status = 1
+            left join system_role_menu rm on rm.role_id = r.id and rm.deleted_flag = 'N'
+            left join system_app_info a on a.id = rm.app_id and a.deleted_flag = 'N'
+        <where>
+            ru.deleted_flag = 'N'
+            and (ru.expire_time is null or ru.expire_time &gt; <include refid="privernal.dialect.nowS"/>)
+            and (u.status is null or u.status != 3)
+            <if test="organizationId != null and organizationId != ''">and r.organization_id = #{organizationId}</if>
+            <if test="userId != null and userId != ''">and ru.user_id = #{userId}</if>
+            <if test="roleId != null and roleId != ''">and ru.role_id = #{roleId}</if>
+        </where>
+        order by u.login_name, r.role_name, rm.app_id, rm.permission
+    </select>
+</mapper>

@@ -177,7 +177,8 @@ public class WebhookEventService implements WebhookPublisher {
             return;
         }
         Map<String, String> names = new HashMap<>();
-        for (SystemWebhookSubscription subscription : subscriptionMapper.selectBatchIds(subscriptionIds)) {
+        // MP 3.5.12：selectBatchIds 已废弃为别名且 PrivernalMapper 重声明无注入语句，走 selectByIds
+        for (SystemWebhookSubscription subscription : subscriptionMapper.selectByIds(subscriptionIds)) {
             names.put(subscription.getId(), subscription.getSubscriptionName());
         }
         for (WebhookEventDTO dto : events) {

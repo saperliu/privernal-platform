@@ -75,6 +75,19 @@ public class  SystemLogOperationController extends BaseController {
     }
 
     /**
+     * R1-8 权限审计报表：权限相关变更日志（含动作归类与对象名称解析）
+     */
+    @Operation(summary = "权限审计报表", description = "权限相关变更日志（角色/角色用户/角色菜单/用户/移交/代理）")
+    @PreAuthorize(hasPermi = "system:permissionAudit:list")
+    @PostMapping("/back/message/systemLogOperation/permissionAudit")
+    public CommonResult<PageListDTO<Object>> permissionAudit(@RequestBody SystemLogOperationFilterDTO systemLogOperation) {
+        startPage(systemLogOperation);
+        List<com.privernal.message.dto.SystemPermissionAuditDTO> list =
+                systemLogOperationService.selectPermissionAuditList(systemLogOperation);
+        return getDataTable(new ArrayList<>(list));
+    }
+
+    /**
      * 新增系统操作日志
      */
     @Operation(summary = "新增系统操作日志", description = "新增系统操作日志")
