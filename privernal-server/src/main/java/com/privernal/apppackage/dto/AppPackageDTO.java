@@ -36,17 +36,43 @@ public class AppPackageDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    /** 当前包结构版本（1.4 起：大屏与素材入包，datav-plan M7.5） */
-    public static final String SPEC_VERSION = "1.4";
+    /** 当前包结构版本（1.5 起：模板元数据/字典映射/角色绑定入包 + 包校验和与签名，R2-14 模板市场） */
+    public static final String SPEC_VERSION = "1.5";
 
-    /** 可导入的历史版本：1.4 向后兼容 1.3/1.2（旧包无 screens/assets 段，导入为空列表） */
-    public static final List<String> SUPPORTED_VERSIONS = List.of(SPEC_VERSION, "1.3", "1.2");
+    /** 可导入的历史版本：1.5 向后兼容 1.4/1.3/1.2（旧包缺 1.5 新段，导入为空列表且不校验签名） */
+    public static final List<String> SUPPORTED_VERSIONS = List.of(SPEC_VERSION, "1.4", "1.3", "1.2");
 
     /** 包结构版本，导入时校验兼容性 */
     private String specVersion = SPEC_VERSION;
 
     /** 导出时间，仅用于人工比对 */
     private String exportedAt;
+
+    /** 模板市场元数据（1.5 起）：普通应用包导出为 null，官方模板包必填 */
+    private TemplateMeta template;
+
+    /** 字典映射（1.5 起）：包内表单 metaData（props.dictType）与流程节点字段权限引用到的字典类型+数据项，
+     *  由导出端自动收集；导入端按 dictType 幂等落库（已存在即复用，绝不覆盖目标环境字典） */
+    private List<DictTypePackage> dicts = new ArrayList<>();
+
+    /** 角色权限绑定（1.5 起）：源环境里该应用菜单授权过的角色，按 roleKey（跨环境业务键）携带菜单编码清单；
+     *  导入端匹配到同 roleKey 角色则重挂其应用菜单授权，匹配不到即跳过并在报告列明 */
+    private List<RoleBinding> roleBindings = new ArrayList<>();
+
+    /** 包体校验和（1.5 起）：sha256(canonical)，canonical=除 checksum/signature 外全部字段的递归键排序紧凑 JSON；
+     *  人工比对用，防传输损坏；导入端重算比对并写入报告 */
+    private String checksum;
+
+    /** 签名算法（1.5 起），当前固定 HMAC-SHA256 */
+    private String signatureAlgorithm;
+
+    /** 签名时刻（1.5 起），仅用于人工比对 */
+    private String signedAt;
+
+    /** 包签名（1.5 起）：hex(HMAC-SHA256(派生密钥, "app-package-sign-v1\n" + canonical))。
+     *  派生密钥=hmac(openapi.secret-master-key, "app-package-sign-v1")，随环境走、不进代码库不进包。
+     *  导出端配置了主密钥即自动签名；导入端见到签名且主密钥可用时恒定时间比对，不符即拒绝（可显式豁免） */
+    private String signature;
 
     private App app = new App();
 
@@ -132,6 +158,54 @@ public class AppPackageDTO implements Serializable {
         /** 一次性任务的原定触发时刻（导入按"缺失/已过期即跳过"处理，绝不导入即执行） */
         private java.util.Date fireTime;
         private String remark;
+    }
+
+    /** 模板市场元数据：官方/行业模板在模板列表页展示的描述面，与包内容解耦 */
+    @Data
+    public static class TemplateMeta implements Serializable {
+        private static final long serialVersionUID = 1L;
+        /** 模板编码，模板列表主键（如 tpl-manpower） */
+        private String code;
+        private String name;
+        /** 行业/场景分类（模板列表页分组用） */
+        private String category;
+        private String description;
+        /** 模板自身版本（独立于包结构 specVersion） */
+        private String version;
+        /** official=官方内置，custom=客户沉淀 */
+        private String author;
+    }
+
+    /** 字典类型入包体：dictType 是跨环境业务键；数据项按 dictValue 幂等导入 */
+    @Data
+    public static class DictTypePackage implements Serializable {
+        private static final long serialVersionUID = 1L;
+        private String dictType;
+        private String dictName;
+        private Long status;
+        private List<DictDataPackage> dataList = new ArrayList<>();
+    }
+
+    @Data
+    public static class DictDataPackage implements Serializable {
+        private static final long serialVersionUID = 1L;
+        private String dictValue;
+        private String dictLabel;
+        private Long dictSort;
+        private String cssClass;
+        private String listClass;
+        private String isDefault;
+        private Long status;
+    }
+
+    /** 角色权限绑定：roleKey 是跨环境业务键；menuCodes 为该角色在源环境被授权的应用菜单编码
+     *  （menu_code 跨环境确定性生成：builder_{tableCode}/应用编码/report_{code}/screenCode） */
+    @Data
+    public static class RoleBinding implements Serializable {
+        private static final long serialVersionUID = 1L;
+        private String roleKey;
+        private String roleName;
+        private List<String> menuCodes = new ArrayList<>();
     }
 
     @Data

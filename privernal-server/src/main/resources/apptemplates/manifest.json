@@ -1,0 +1,49 @@
+{
+  "templates": [
+    {
+      "code": "tpl-campus-full",
+      "name": "校园管理全套",
+      "category": "campus",
+      "description": "校园管理演示应用全套沉淀：班级/学生/教师/课程档案、请假与开课两级审批流、物模型示例，安装后即可演示完整业务闭环。",
+      "version": "1.0.0",
+      "author": "official",
+      "appCode": "campus",
+      "appName": "校园管理",
+      "formCount": 9,
+      "flowCount": 2,
+      "screenCount": 0,
+      "dictCount": 1,
+      "specVersion": "1.5"
+    },
+    {
+      "code": "tpl-campus-approval",
+      "name": "校园审批套件",
+      "category": "campus",
+      "description": "两级审批最小套件：请假申请与开课申请两条流程（含节点字段/按钮权限），适合快速演示流程审批能力。",
+      "version": "1.0.0",
+      "author": "official",
+      "appCode": "campus",
+      "appName": "校园管理",
+      "formCount": 2,
+      "flowCount": 2,
+      "screenCount": 0,
+      "dictCount": 1,
+      "specVersion": "1.5"
+    },
+    {
+      "code": "tpl-iot-thing-model",
+      "name": "物模型管理",
+      "category": "iot",
+      "description": "IoT 物模型管理模板：属性/事件/服务多页签与子表结构的表单样板，适合设备接入类项目起步。",
+      "version": "1.0.0",
+      "author": "official",
+      "appCode": "campus",
+      "appName": "校园管理",
+      "formCount": 1,
+      "flowCount": 0,
+      "screenCount": 0,
+      "dictCount": 1,
+      "specVersion": "1.5"
+    }
+  ]
+}

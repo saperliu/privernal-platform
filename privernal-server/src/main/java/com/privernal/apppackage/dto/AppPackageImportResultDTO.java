@@ -41,6 +41,11 @@ public class AppPackageImportResultDTO implements Serializable {
 
     private String appAction;
 
+    /** 签名回执（1.5 起，R2-14）：已验签/验签失败/未签名/无法验签（未配主密钥） */
+    private String signatureStatus;
+
+    private String signatureDetail;
+
     private List<Item> items = new ArrayList<>();
 
     public void add(String type, String code, String action, String message) {

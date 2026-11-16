@@ -17,6 +17,7 @@
 package com.privernal.apppackage.service;
 
 import com.privernal.apppackage.dto.AppPackageDTO;
+import com.privernal.apppackage.dto.AppPackageDryRunResultDTO;
 import com.privernal.apppackage.dto.AppPackageImportResultDTO;
 import com.privernal.dynamic.dbs.domain.DynamicForm;
 import com.privernal.dynamic.dbs.domain.DynamicFormColumn;
@@ -30,9 +31,26 @@ import com.privernal.flow.dto.FlowFormVersionDTO;
 import com.privernal.flow.filter.FlowDefinitionFilterDTO;
 import com.privernal.flow.service.IFlowDefinitionService;
 import com.privernal.flow.service.IFlowFormVersionService;
-import com.privernal.system.domain.SystemAppInfo;
+import com.privernal.system.domain.SystemDictionaryData;
+import com.privernal.system.domain.SystemDictionaryType;
+import com.privernal.system.domain.SystemMenu;
+import com.privernal.system.domain.SystemRole;
+import com.privernal.system.domain.SystemRoleMenu;
 import com.privernal.system.dto.SystemAppInfoDTO;
 import com.privernal.system.filter.SystemAppInfoFilterDTO;
+import com.privernal.system.filter.SystemAppMenuFilterDTO;
+import com.privernal.system.filter.SystemDictionaryDataFilterDTO;
+import com.privernal.system.filter.SystemDictionaryTypeFilterDTO;
+import com.privernal.system.filter.SystemMenuFilterDTO;
+import com.privernal.system.filter.SystemRoleFilterDTO;
+import com.privernal.system.filter.SystemRoleMenuFilterDTO;
+import com.privernal.system.service.ISystemAppMenuService;
+import com.privernal.system.service.ISystemDictionaryDataService;
+import com.privernal.system.service.ISystemDictionaryTypeService;
+import com.privernal.system.service.ISystemMenuService;
+import com.privernal.system.service.ISystemRoleMenuService;
+import com.privernal.system.service.ISystemRoleService;
+import com.privernal.system.domain.SystemAppInfo;
 import com.privernal.system.service.ISystemAppInfoService;
 import com.privernal.common.security.service.SecurityUtils;
 import com.alibaba.fastjson2.JSON;
@@ -79,6 +97,8 @@ public class AppPackageService {
     private static final String TYPE_DOC_TEMPLATE = "docTemplate";
     private static final String TYPE_DATAV_SCREEN = "datavScreen";
     private static final String TYPE_DATAV_ASSET = "datavAsset";
+    private static final String TYPE_DICT = "dict";
+    private static final String TYPE_ROLE_BINDING = "roleBinding";
 
     /** warm-flow 发布状态：1 已发布 */
     private static final Integer PUBLISHED = 1;
@@ -120,6 +140,20 @@ public class AppPackageService {
     private com.privernal.dynamic.datav.service.IDynamicDatavScreenService datavScreenService;
     @Resource
     private com.privernal.dynamic.datav.service.IDynamicDatavAssetService datavAssetService;
+    @Resource
+    private ISystemAppMenuService systemAppMenuService;
+    @Resource
+    private ISystemMenuService systemMenuService;
+    @Resource
+    private ISystemRoleMenuService systemRoleMenuService;
+    @Resource
+    private ISystemRoleService systemRoleService;
+    @Resource
+    private ISystemDictionaryTypeService dictionaryTypeService;
+    @Resource
+    private ISystemDictionaryDataService dictionaryDataService;
+    @Resource
+    private PackageSignatures packageSignatures;
 
 
     /**
@@ -177,7 +211,152 @@ public class AppPackageService {
         } catch (Exception e) {
             log.warn("导出单据打印模板失败，已跳过该段 appId={}", appId, e);
         }
+        // 1.5（R2-14）：字典映射与角色绑定——收集失败只降级为空段+日志，不让整包导出失败
+        try {
+            exportDicts(appId, pkg);
+        } catch (Exception e) {
+            log.warn("导出字典映射失败，已跳过该段 appId={}", appId, e);
+        }
+        try {
+            exportRoleBindings(appId, pkg);
+        } catch (Exception e) {
+            log.warn("导出角色绑定失败，已跳过该段 appId={}", appId, e);
+        }
+        // 1.5（R2-14）：导出端收口签名——主密钥已配置即自动签名，未配置仅带校验和
+        packageSignatures.sign(pkg);
         return pkg;
+    }
+
+    /**
+     * 导出字典映射（1.5，R2-14）：自动收集包内表单 metaData（props.dataSource=dict 的 props.dictType）
+     * 与流程节点字段权限（FlowFormFieldPerm.dictType）引用到的字典类型+数据项。
+     * 导入端按 dictType 幂等落库，已存在即复用——字典在目标环境可能有本地化改動，绝不覆盖。
+     */
+    private void exportDicts(String appId, AppPackageDTO pkg) {
+        Set<String> dictTypeRefs = new java.util.LinkedHashSet<>();
+        for (AppPackageDTO.Form form : pkg.getForms()) {
+            if (form.getMetaData() != null) {
+                collectMetaDataDictTypes(form.getMetaData(), dictTypeRefs);
+            }
+        }
+        for (AppPackageDTO.Flow flow : pkg.getFlows()) {
+            for (AppPackageDTO.FormVersion version : flow.getFormVersions()) {
+                for (AppPackageDTO.FieldPerm field : version.getFields()) {
+                    if (StringUtils.hasText(field.getDictType())) {
+                        dictTypeRefs.add(field.getDictType());
+                    }
+                }
+            }
+        }
+        if (dictTypeRefs.isEmpty()) {
+            return;
+        }
+        for (String dictType : dictTypeRefs) {
+            try {
+                SystemDictionaryTypeFilterDTO typeFilter = new SystemDictionaryTypeFilterDTO();
+                typeFilter.setDictType(dictType);
+                List<SystemDictionaryType> types = dictionaryTypeService.selectSystemDictionaryTypeList(typeFilter);
+                if (types == null || types.isEmpty()) {
+                    log.warn("表单引用的字典类型 {} 在源环境不存在，应用包不携带该字典", dictType);
+                    continue;
+                }
+                SystemDictionaryType type = types.get(0);
+                AppPackageDTO.DictTypePackage item = new AppPackageDTO.DictTypePackage();
+                item.setDictType(type.getDictType());
+                item.setDictName(type.getDictName());
+                item.setStatus(type.getStatus());
+                SystemDictionaryDataFilterDTO dataFilter = new SystemDictionaryDataFilterDTO();
+                dataFilter.setDictType(dictType);
+                for (SystemDictionaryData data : dictionaryDataService.selectSystemDictionaryDataList(dataFilter)) {
+                    AppPackageDTO.DictDataPackage dataItem = new AppPackageDTO.DictDataPackage();
+                    dataItem.setDictValue(data.getDictValue());
+                    dataItem.setDictLabel(data.getDictLabel());
+                    dataItem.setDictSort(data.getDictSort());
+                    dataItem.setCssClass(data.getCssClass());
+                    dataItem.setListClass(data.getListClass());
+                    dataItem.setIsDefault(data.getIsDefault());
+                    dataItem.setStatus(data.getStatus());
+                    item.getDataList().add(dataItem);
+                }
+                pkg.getDicts().add(item);
+            } catch (Exception e) {
+                log.warn("导出单个字典类型失败，已跳过 dictType={}", dictType, e);
+            }
+        }
+    }
+
+    /** 递归收集 metaData 树里的 props.dictType 值：字段节点是 {props:{dataSource:'dict', dictType:'xxx'}} */
+    private void collectMetaDataDictTypes(Object node, Set<String> collected) {
+        if (node instanceof JSONObject object) {
+            String dictType = object.getString("dictType");
+            if (StringUtils.hasText(dictType)) {
+                // 只有字典数据源才收：非字典组件的同名属性不存在，这里按「有 dictType 即引用」宽松收集，
+                // 多收的字典导入端只是多登记一个类型，无副作用
+                collected.add(dictType);
+            }
+            for (Object value : object.values()) {
+                collectMetaDataDictTypes(value, collected);
+            }
+        } else if (node instanceof List<?> list) {
+            for (Object item : list) {
+                collectMetaDataDictTypes(item, collected);
+            }
+        }
+    }
+
+    /**
+     * 导出角色绑定（1.5，R2-14）：应用菜单 → 角色菜单授权 → 按 roleKey（跨环境业务键）归组。
+     * 只带 menuCodes 不带菜单 id：menu_code 由各自动化链路确定性生成（builder_{tableCode}/应用编码/
+     * report_{code}/screenCode），导入端在目标环境按同码重挂。
+     */
+    private void exportRoleBindings(String appId, AppPackageDTO pkg) {
+        SystemAppMenuFilterDTO appMenuFilter = new SystemAppMenuFilterDTO();
+        appMenuFilter.setAppId(appId);
+        List<com.privernal.system.dto.SystemAppMenuDTO> appMenus = systemAppMenuService.selectSystemAppMenuList(appMenuFilter);
+        if (appMenus == null || appMenus.isEmpty()) {
+            return;
+        }
+        List<String> menuIds = appMenus.stream().map(com.privernal.system.dto.SystemAppMenuDTO::getMenuId)
+                .filter(StringUtils::hasText).distinct().collect(java.util.stream.Collectors.toList());
+        if (menuIds.isEmpty()) {
+            return;
+        }
+        // 菜单编码映射 + 角色授权行（一次查全，避免逐菜单 N 次查询）
+        Map<String, String> menuCodeById = new HashMap<>();
+        for (String menuId : menuIds) {
+            SystemMenu menu = systemMenuService.selectSystemMenuById(menuId);
+            if (menu != null && StringUtils.hasText(menu.getMenuCode())) {
+                menuCodeById.put(menuId, menu.getMenuCode());
+            }
+        }
+        Map<String, java.util.Set<String>> menuCodesByRoleId = new java.util.LinkedHashMap<>();
+        for (String menuId : menuIds) {
+            SystemRoleMenuFilterDTO roleMenuFilter = new SystemRoleMenuFilterDTO();
+            roleMenuFilter.setMenuId(menuId);
+            for (SystemRoleMenu roleMenu : systemRoleMenuService.selectSystemRoleMenuList(roleMenuFilter)) {
+                if (!StringUtils.hasText(roleMenu.getRoleId()) || !menuCodeById.containsKey(menuId)) {
+                    continue;
+                }
+                menuCodesByRoleId.computeIfAbsent(roleMenu.getRoleId(), key -> new java.util.LinkedHashSet<>())
+                        .add(menuCodeById.get(menuId));
+            }
+        }
+        for (Map.Entry<String, java.util.Set<String>> entry : menuCodesByRoleId.entrySet()) {
+            try {
+                SystemRole role = systemRoleService.selectSystemRoleById(entry.getKey());
+                if (role == null || !StringUtils.hasText(role.getRoleKey())) {
+                    log.warn("角色 {} 不存在或缺少 roleKey，应用包不携带其菜单绑定", entry.getKey());
+                    continue;
+                }
+                AppPackageDTO.RoleBinding binding = new AppPackageDTO.RoleBinding();
+                binding.setRoleKey(role.getRoleKey());
+                binding.setRoleName(role.getRoleName());
+                binding.setMenuCodes(new ArrayList<>(entry.getValue()));
+                pkg.getRoleBindings().add(binding);
+            } catch (Exception e) {
+                log.warn("导出单个角色绑定失败，已跳过 roleId={}", entry.getKey(), e);
+            }
+        }
     }
 
     /**
@@ -480,14 +659,44 @@ public class AppPackageService {
      * 事务包裹只会掩盖已经发生的改动。每项的成败都记入返回报告。
      */
     public AppPackageImportResultDTO importApp(AppPackageDTO pkg, boolean overwrite) {
+        return importApp(pkg, overwrite, false);
+    }
+
+    /**
+     * 导入应用包（1.5 起，R2-14）。
+     *
+     * @param ignoreSignature 签名校验失败时的显式豁免（只对「确认包来源可信」的手工修包场景开放，
+     *                        UI 上是独立勾选项；checksum 损坏同样豁免）。
+     *                        注意豁免只放行签名/校验和不符，specVersion 不兼容仍然拒绝。
+     */
+    public AppPackageImportResultDTO importApp(AppPackageDTO pkg, boolean overwrite, boolean ignoreSignature) {
         Assert.notNull(pkg, "应用包内容为空");
         Assert.isTrue(AppPackageDTO.SUPPORTED_VERSIONS.contains(pkg.getSpecVersion()),
                 "不支持的应用包结构版本：" + pkg.getSpecVersion() + "（支持 " + AppPackageDTO.SUPPORTED_VERSIONS + "）");
         Assert.hasText(pkg.getApp().getCode(), "应用包缺少应用编码");
 
+        // 签名/校验和校验（fail-closed）：包有签名且主密钥可用时不符必须显式豁免才能继续
+        PackageSignatures.Verification verification = packageSignatures.verify(pkg);
+        if (verification.status() == PackageSignatures.Status.MISMATCH && !ignoreSignature) {
+            throw new IllegalArgumentException(verification.detail() + "；如确认包来源可信，可勾选「忽略签名校验」后重试");
+        }
+
         AppPackageImportResultDTO result = new AppPackageImportResultDTO();
+        result.setAppCode(pkg.getApp().getCode());
+        result.setSignatureStatus(PackageSignatures.describe(verification));
+        result.setSignatureDetail(verification.detail());
+        if (pkg.getChecksum() != null && !verification.checksumMatch()) {
+            if (!ignoreSignature) {
+                throw new IllegalArgumentException("应用包校验和不符：内容在导出后被改动过；如确认包来源可信，可勾选「忽略签名校验」后重试");
+            }
+            log.warn("导入应用包在豁免签名校验下继续（checksum 不符）appCode={}", pkg.getApp().getCode());
+        }
         String appId = importAppInfo(pkg.getApp(), result);
 
+        // 字典映射（1.5）：先于表单落库，运行时渲染按 dictType 解析，缺字典只影响选项展示
+        for (AppPackageDTO.DictTypePackage dict : pkg.getDicts()) {
+            importDict(appId, dict, result);
+        }
         for (AppPackageDTO.Form form : pkg.getForms()) {
             importForm(appId, form, overwrite, result);
         }
@@ -520,7 +729,342 @@ public class AppPackageService {
         for (AppPackageDTO.DocTemplate tpl : pkg.getDocTemplates()) {
             importDocTemplate(appId, tpl, overwrite, result);
         }
+        // 角色绑定（1.5）：最后执行——表单/大屏/仪表盘的菜单都注册完才能按 menu_code 重挂授权
+        for (AppPackageDTO.RoleBinding binding : pkg.getRoleBindings()) {
+            importRoleBinding(appId, binding, result);
+        }
         return result;
+    }
+
+    /**
+     * 导入字典映射（1.5，R2-14）：类型按 dictType 幂等（已存在=复用目标环境字典，绝不覆盖本地化改动），
+     * 数据项按 (dictType, dictValue) 幂等补缺——目标环境已有的值保留原样，缺失的值补进来。
+     */
+    private void importDict(String appId, AppPackageDTO.DictTypePackage dict, AppPackageImportResultDTO result) {
+        String code = dict.getDictType();
+        if (!StringUtils.hasText(code)) {
+            result.add(TYPE_DICT, dict.getDictName(), AppPackageImportResultDTO.FAILED, "字典缺少 dictType");
+            return;
+        }
+        try {
+            SystemDictionaryTypeFilterDTO typeFilter = new SystemDictionaryTypeFilterDTO();
+            typeFilter.setDictType(code);
+            List<SystemDictionaryType> existing = dictionaryTypeService.selectSystemDictionaryTypeList(typeFilter);
+            if (existing == null || existing.isEmpty()) {
+                SystemDictionaryType type = new SystemDictionaryType();
+                type.setDictType(code);
+                type.setDictName(dict.getDictName());
+                type.setStatus(dict.getStatus() == null ? 0L : dict.getStatus());
+                type.setOrganizationId(SecurityUtils.getOrganizationId());
+                type.setDepartmentId(SecurityUtils.getDepartmentId());
+                dictionaryTypeService.insertSystemDictionaryType(type);
+                result.add(TYPE_DICT, code, AppPackageImportResultDTO.CREATED,
+                        "已创建字典类型（" + (dict.getDataList() == null ? 0 : dict.getDataList().size()) + " 个数据项）");
+            } else {
+                result.add(TYPE_DICT, code, AppPackageImportResultDTO.SKIPPED,
+                        "字典类型已存在，复用目标环境定义（不覆盖本地化改动）");
+            }
+            if (dict.getDataList() == null) {
+                return;
+            }
+            int added = 0;
+            for (AppPackageDTO.DictDataPackage data : dict.getDataList()) {
+                if (!StringUtils.hasText(data.getDictValue())) {
+                    continue;
+                }
+                SystemDictionaryData existingData =
+                        dictionaryDataService.findSystemDictionaryDataByTypeAndValue(code, data.getDictValue());
+                if (existingData != null) {
+                    continue;
+                }
+                SystemDictionaryData payload = new SystemDictionaryData();
+                payload.setDictType(code);
+                payload.setDictValue(data.getDictValue());
+                payload.setDictLabel(data.getDictLabel());
+                payload.setDictSort(data.getDictSort());
+                payload.setCssClass(data.getCssClass());
+                payload.setListClass(data.getListClass());
+                payload.setIsDefault(data.getIsDefault());
+                payload.setStatus(data.getStatus() == null ? 0L : data.getStatus());
+                payload.setOrganizationId(SecurityUtils.getOrganizationId());
+                payload.setDepartmentId(SecurityUtils.getDepartmentId());
+                dictionaryDataService.insertSystemDictionaryData(payload);
+                added++;
+            }
+            if (added > 0) {
+                result.add(TYPE_DICT, code, AppPackageImportResultDTO.UPDATED, "已补齐缺失字典数据项 " + added + " 个");
+            }
+        } catch (Exception e) {
+            log.warn("导入字典失败 dictType={}", code, e);
+            result.add(TYPE_DICT, code, AppPackageImportResultDTO.FAILED, e.getMessage());
+        }
+    }
+
+    /**
+     * 导入角色绑定（1.5，R2-14）：按 roleKey 匹配目标环境角色；角色存在则把该角色缺失的
+     * 应用菜单授权（system_role_menu）按 menu_code 重挂，幂等（已有授权行不重复插）。
+     * 角色不存在=跳过并留痕（目标环境角色体系是本地事实，包不创建角色）。
+     */
+    private void importRoleBinding(String appId, AppPackageDTO.RoleBinding binding, AppPackageImportResultDTO result) {
+        String roleKey = binding.getRoleKey();
+        if (!StringUtils.hasText(roleKey)) {
+            result.add(TYPE_ROLE_BINDING, binding.getRoleName(), AppPackageImportResultDTO.FAILED, "角色绑定缺少 roleKey");
+            return;
+        }
+        try {
+            SystemRoleFilterDTO roleFilter = new SystemRoleFilterDTO();
+            roleFilter.setRoleKey(roleKey);
+            roleFilter.setOrganizationId(SecurityUtils.getOrganizationId());
+            List<SystemRole> roles = systemRoleService.selectSystemRoleList(roleFilter);
+            if (roles == null || roles.isEmpty()) {
+                result.add(TYPE_ROLE_BINDING, roleKey, AppPackageImportResultDTO.SKIPPED,
+                        "目标环境不存在同编码角色，未重挂菜单授权（角色体系不随包迁移）");
+                return;
+            }
+            String roleId = roles.get(0).getId();
+            int granted = 0;
+            for (String menuCode : binding.getMenuCodes()) {
+                if (!StringUtils.hasText(menuCode)) {
+                    continue;
+                }
+                SystemMenuFilterDTO menuFilter = new SystemMenuFilterDTO();
+                menuFilter.setMenuCode(menuCode);
+                List<SystemMenu> menus = systemMenuService.selectSystemMenuList(menuFilter);
+                if (menus == null || menus.isEmpty()) {
+                    log.warn("目标环境不存在菜单 {}（角色 {}），跳过该条授权", menuCode, roleKey);
+                    continue;
+                }
+                for (SystemMenu menu : menus) {
+                    SystemRoleMenuFilterDTO existsFilter = new SystemRoleMenuFilterDTO();
+                    existsFilter.setRoleId(roleId);
+                    existsFilter.setMenuId(menu.getId());
+                    List<SystemRoleMenu> existing = systemRoleMenuService.selectSystemRoleMenuList(existsFilter);
+                    if (existing != null && !existing.isEmpty()) {
+                        continue;
+                    }
+                    SystemRoleMenu roleMenu = new SystemRoleMenu();
+                    roleMenu.setRoleId(roleId);
+                    roleMenu.setMenuId(menu.getId());
+                    roleMenu.setAppId(appId);
+                    roleMenu.setPermission(menu.getPermission());
+                    systemRoleMenuService.insertSystemRoleMenu(roleMenu);
+                    granted++;
+                }
+            }
+            result.add(TYPE_ROLE_BINDING, roleKey,
+                    granted > 0 ? AppPackageImportResultDTO.UPDATED : AppPackageImportResultDTO.SKIPPED,
+                    granted > 0 ? "已为角色补挂应用菜单授权 " + granted + " 条" : "角色已有等价菜单授权，未变更");
+        } catch (Exception e) {
+            log.warn("导入角色绑定失败 roleKey={}", roleKey, e);
+            result.add(TYPE_ROLE_BINDING, roleKey, AppPackageImportResultDTO.FAILED, e.getMessage());
+        }
+    }
+
+    /**
+     * dry-run 预检（1.5，R2-14 模板市场 ①）：解析包内容并与目标环境逐项比对，产出
+     * 「若现在导入会发生什么」的报告——全程只读、不落库、不执行任何 DDL/DML。
+     *
+     * <p>签名/校验和问题在这里只报告不阻断（阻断语义在 importApp，fail-closed + 显式豁免），
+     * 让导入方在预检阶段就能看到验签失败而不必真的发起导入才知道。
+     */
+    public AppPackageDryRunResultDTO dryRun(AppPackageDTO pkg, boolean overwrite) {
+        Assert.notNull(pkg, "应用包内容为空");
+        Assert.isTrue(AppPackageDTO.SUPPORTED_VERSIONS.contains(pkg.getSpecVersion()),
+                "不支持的应用包结构版本：" + pkg.getSpecVersion() + "（支持 " + AppPackageDTO.SUPPORTED_VERSIONS + "）");
+        Assert.hasText(pkg.getApp().getCode(), "应用包缺少应用编码");
+
+        AppPackageDryRunResultDTO report = new AppPackageDryRunResultDTO();
+        report.setAppCode(pkg.getApp().getCode());
+        report.setAppName(pkg.getApp().getAppName());
+        report.setSpecVersion(pkg.getSpecVersion());
+        report.setOverwrite(overwrite);
+        report.setSignatureKeyConfigured(packageSignatures.keyConfigured());
+
+        PackageSignatures.Verification verification = packageSignatures.verify(pkg);
+        report.setSignatureStatus(switch (verification.status()) {
+            case VERIFIED -> "verified";
+            case MISMATCH -> "mismatch";
+            case NOT_SIGNED -> "notSigned";
+            case KEY_MISSING -> "keyMissing";
+        });
+        report.setSignatureDetail(verification.detail());
+        report.setChecksumMatch(verification.checksumMatch());
+        if (verification.status() == PackageSignatures.Status.MISMATCH) {
+            report.getWarnings().add(verification.detail() + "；直接导入将被拒绝（除非显式勾选忽略签名校验）");
+        }
+        if (verification.status() == PackageSignatures.Status.NOT_SIGNED) {
+            report.getWarnings().add("应用包未签名：无法确认来源（旧版本包或导出端未配置 openapi.secret-master-key）");
+        }
+        if (verification.status() == PackageSignatures.Status.KEY_MISSING) {
+            report.getWarnings().add("应用包已签名但本环境未配置 openapi.secret-master-key，导入时将无法校验签名");
+        }
+        if (pkg.getChecksum() != null && !verification.checksumMatch()) {
+            report.getWarnings().add("包体校验和与重算值不符：内容在导出后被改动过");
+        }
+        if (!"1.5".equals(pkg.getSpecVersion())) {
+            report.getWarnings().add("包结构版本 " + pkg.getSpecVersion() + " 为旧版本，无 1.5 新段（字典/角色绑定/签名）");
+        }
+
+        // 应用：同编码即复用（导入不重建）
+        SystemAppInfoFilterDTO appFilter = new SystemAppInfoFilterDTO();
+        appFilter.setCode(pkg.getApp().getCode());
+        List<SystemAppInfoDTO> existingApps = systemAppInfoService.selectSystemAppInfoList(appFilter);
+        boolean appExists = existingApps != null && !existingApps.isEmpty();
+        report.add(TYPE_APP, pkg.getApp().getCode(), pkg.getApp().getAppName(),
+                appExists ? AppPackageDryRunResultDTO.REUSE : AppPackageDryRunResultDTO.CREATE,
+                appExists ? "目标环境已有同编码应用，导入将直接复用" : "将新建应用并生成应用目录菜单");
+
+        // 表单：不存在=建表；存在=overwrite 时覆盖（先查会不会误删目标字段）；未开覆盖=跳过
+        for (AppPackageDTO.Form form : pkg.getForms()) {
+            DynamicForm existingForm = dynamicFormService.selectDynamicFormByTableCode(form.getTableCode());
+            if (existingForm == null) {
+                report.add(TYPE_FORM, form.getTableCode(), form.getTableName(),
+                        AppPackageDryRunResultDTO.CREATE, "将建物理表并生成表单菜单与按钮权限");
+            } else if (overwrite) {
+                List<String> droppingFields = findFieldsToDrop(existingForm.getId(), form.getColumns());
+                if (!droppingFields.isEmpty()) {
+                    report.add(TYPE_FORM, form.getTableCode(), form.getTableName(),
+                            AppPackageDryRunResultDTO.CONFLICT,
+                            "覆盖将删除目标环境字段：" + String.join("、", droppingFields) + "，导入时该表单将被跳过");
+                } else {
+                    report.add(TYPE_FORM, form.getTableCode(), form.getTableName(),
+                            AppPackageDryRunResultDTO.UPDATE, "已存在，开启覆盖后将更新定义并增量补列");
+                }
+            } else {
+                report.add(TYPE_FORM, form.getTableCode(), form.getTableName(),
+                        AppPackageDryRunResultDTO.SKIP, "已存在且未开启覆盖，导入将跳过");
+            }
+        }
+
+        // 流程：导入恒走 saveDefJson 产生新版本（不覆盖旧版本），已存在编码=追加版本
+        for (AppPackageDTO.Flow flow : pkg.getFlows()) {
+            FlowDefinitionFilterDTO defFilter = new FlowDefinitionFilterDTO();
+            defFilter.setFlowCode(flow.getFlowCode());
+            defFilter.setPageNum(1);
+            defFilter.setPageSize(1);
+            boolean flowExists = !flowDefinitionService.pageDefinitions(defFilter).getRecords().isEmpty();
+            report.add(TYPE_FLOW, flow.getFlowCode(), flow.getFlowName(),
+                    flowExists ? AppPackageDryRunResultDTO.UPDATE : AppPackageDryRunResultDTO.CREATE,
+                    flowExists ? "已存在，导入将发布新版本（不改动历史版本）" : "将导入流程定义并发布");
+            for (AppPackageDTO.FormVersion version : flow.getFormVersions()) {
+                List<FlowFormVersionDTO> published =
+                        flowFormVersionService.selectVersionList(flow.getFlowCode(), version.getTableCode(), VERSION_PUBLISHED);
+                boolean permsExist = published != null && !published.isEmpty();
+                report.add(TYPE_FLOW_FORM, flow.getFlowCode() + ":" + version.getTableCode(), version.getFormName(),
+                        permsExist ? (overwrite ? AppPackageDryRunResultDTO.UPDATE : AppPackageDryRunResultDTO.SKIP)
+                                : AppPackageDryRunResultDTO.CREATE,
+                        permsExist ? (overwrite ? "节点权限已存在，开启覆盖后将复制新草稿发布"
+                                : "节点权限已存在且未开启覆盖，导入将跳过")
+                                : "将初始化节点字段与按钮权限并发布");
+            }
+        }
+
+        // 报表资产：code 判重 + 依赖可达性
+        for (AppPackageDTO.Dataset dataset : pkg.getDatasets()) {
+            boolean exists = datasetService.findByCode(dataset.getDatasetCode()) != null;
+            addExistPredict(report, TYPE_DATASET, dataset.getDatasetCode(), dataset.getDatasetName(), exists, overwrite,
+                    "数据集");
+            // 动态表源（sourceType 缺省）才有表单可解析；外部源 http/csv 无 tableCode 概念
+            if (!StringUtils.hasText(dataset.getSourceType())
+                    && reportTableResolver.resolveFormStrict(dataset.getTableCode()) == null) {
+                report.getWarnings().add("数据集 " + dataset.getDatasetCode() + " 引用的表单 "
+                        + dataset.getTableCode() + " 在目标环境不存在，导入后该数据集不可用");
+            }
+        }
+        for (AppPackageDTO.ReportAsset reportAsset : pkg.getReports()) {
+            boolean exists = reportService.findByCode(reportAsset.getReportCode()) != null;
+            boolean datasetMissing = datasetService.findByCode(reportAsset.getDatasetCode()) == null;
+            if (datasetMissing && !pkg.getDatasets().stream().anyMatch(d -> reportAsset.getDatasetCode().equals(d.getDatasetCode()))) {
+                report.add(TYPE_REPORT, reportAsset.getReportCode(), reportAsset.getReportName(),
+                        AppPackageDryRunResultDTO.CONFLICT,
+                        "依赖的数据集 " + reportAsset.getDatasetCode() + " 在目标环境不存在，导入时该图表将失败");
+            } else {
+                addExistPredict(report, TYPE_REPORT, reportAsset.getReportCode(), reportAsset.getReportName(), exists, overwrite,
+                        "图表");
+            }
+        }
+        for (AppPackageDTO.Dashboard dashboard : pkg.getDashboards()) {
+            addExistPredict(report, TYPE_DASHBOARD, dashboard.getDashboardCode(), dashboard.getDashboardName(),
+                    dashboardService.findByCode(dashboard.getDashboardCode()) != null, overwrite, "仪表盘");
+        }
+        for (AppPackageDTO.DatavScreen screen : pkg.getScreens()) {
+            addExistPredict(report, TYPE_DATAV_SCREEN, screen.getScreenCode(), screen.getScreenName(),
+                    datavScreenService.findByCode(screen.getScreenCode()) != null, overwrite, "大屏");
+        }
+        for (AppPackageDTO.DatavAsset asset : pkg.getDatavAssets()) {
+            boolean exists = datavAssetService.listAssets(null, null).stream()
+                    .anyMatch(item -> asset.getAssetCode().equals(item.getAssetCode()));
+            addExistPredict(report, TYPE_DATAV_ASSET, asset.getAssetCode(), asset.getAssetName(), exists, overwrite, "素材");
+        }
+        for (AppPackageDTO.ScheduleTaskPackage task : pkg.getScheduleTasks()) {
+            String code = task.getTaskCode() == null ? task.getBizKey() : task.getTaskCode();
+            boolean exists = scheduleTaskExists(code);
+            addExistPredict(report, TYPE_SCHEDULE, code, task.getTitle(), exists, overwrite, "定时任务");
+        }
+        for (AppPackageDTO.DocTemplate tpl : pkg.getDocTemplates()) {
+            boolean exists = docTemplateMapper.selectOne(
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.privernal.dynamic.advanced.domain.DynamicDocTemplate>()
+                            .eq(com.privernal.dynamic.advanced.domain.DynamicDocTemplate::getTemplateCode, tpl.getTemplateCode())
+                            .last("limit 1")) != null;
+            addExistPredict(report, TYPE_DOC_TEMPLATE, tpl.getTemplateCode(), tpl.getName(), exists, overwrite, "单据打印模板");
+            if (reportTableResolver.resolveFormStrict(tpl.getFormTableCode()) == null) {
+                report.getWarnings().add("单据模板 " + tpl.getTemplateCode() + " 关联表单 "
+                        + tpl.getFormTableCode() + " 在目标环境不存在，导入时将被跳过");
+            }
+        }
+
+        // 字典：类型按 dictType 判存在（数据项缺失部分导入会自动补齐）
+        for (AppPackageDTO.DictTypePackage dict : pkg.getDicts()) {
+            SystemDictionaryTypeFilterDTO typeFilter = new SystemDictionaryTypeFilterDTO();
+            typeFilter.setDictType(dict.getDictType());
+            List<SystemDictionaryType> existingTypes = dictionaryTypeService.selectSystemDictionaryTypeList(typeFilter);
+            boolean exists = existingTypes != null && !existingTypes.isEmpty();
+            report.add(TYPE_DICT, dict.getDictType(), dict.getDictName(),
+                    exists ? AppPackageDryRunResultDTO.REUSE : AppPackageDryRunResultDTO.CREATE,
+                    exists ? "字典类型已存在，导入将复用目标环境定义并只补缺失数据项" : "将创建字典类型及数据项");
+        }
+
+        // 角色绑定：按 roleKey 判存在；不存在=导入时跳过（包不创建角色）
+        for (AppPackageDTO.RoleBinding binding : pkg.getRoleBindings()) {
+            SystemRoleFilterDTO roleFilter = new SystemRoleFilterDTO();
+            roleFilter.setRoleKey(binding.getRoleKey());
+            roleFilter.setOrganizationId(SecurityUtils.getOrganizationId());
+            List<SystemRole> roles = systemRoleService.selectSystemRoleList(roleFilter);
+            if (roles == null || roles.isEmpty()) {
+                report.add(TYPE_ROLE_BINDING, binding.getRoleKey(), binding.getRoleName(),
+                        AppPackageDryRunResultDTO.SKIP, "目标环境不存在同编码角色，导入将跳过该绑定");
+                report.getWarnings().add("角色 " + binding.getRoleKey() + "（" + binding.getRoleName()
+                        + "）在目标环境不存在，其菜单授权不会迁移；如需生效请先建同编码角色再导入");
+            } else {
+                report.add(TYPE_ROLE_BINDING, binding.getRoleKey(), binding.getRoleName(),
+                        AppPackageDryRunResultDTO.UPDATE, "将按 menu_code 为该角色补挂应用菜单授权");
+            }
+        }
+        return report;
+    }
+
+    /** 已存在类资产的通用预测：不存在=新建；存在=overwrite? 覆盖 : 跳过 */
+    private void addExistPredict(AppPackageDryRunResultDTO report, String type, String code, String name,
+                                 boolean exists, boolean overwrite, String label) {
+        if (!exists) {
+            report.add(type, code, name, AppPackageDryRunResultDTO.CREATE, "将新建" + label);
+        } else if (overwrite) {
+            report.add(type, code, name, AppPackageDryRunResultDTO.UPDATE, "已存在，开启覆盖后将更新" + label);
+        } else {
+            report.add(type, code, name, AppPackageDryRunResultDTO.SKIP, "已存在且未开启覆盖，导入将跳过");
+        }
+    }
+
+    /** 定时任务判重：keyword 按 task_code/title 模糊，这里取回后在内存里精确比对 code */
+    private boolean scheduleTaskExists(String taskCode) {
+        if (!StringUtils.hasText(taskCode)) {
+            return false;
+        }
+        com.privernal.job.filter.ScheduleTaskFilterDTO filter = new com.privernal.job.filter.ScheduleTaskFilterDTO();
+        filter.setKeyword(taskCode);
+        filter.setPageSize(100);
+        return scheduleTaskMapper.selectScheduleTaskList(filter).stream()
+                .anyMatch(task -> taskCode.equals(task.getTaskCode()));
     }
 
     /**
