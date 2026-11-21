@@ -199,4 +199,21 @@ public interface DynamicTableDataMapper extends DataScopeMapper {
     @IgnoreDataScope
     int countByColumnValue(@Param("tableName") String tableName, @Param("column") String column,
                            @Param("value") String value, @Param("excludeId") String excludeId);
+
+    /**
+     * 复合唯一应用层判重兜底（5.9）候选行捞取（活跃行）。
+     * 筛条件是「非空成员有序序列相等」的超集：每列 is null 或 ∈ eqValues，且非空列数 = nonNullCount
+     * （eqValues 为空时退化为全 NULL 行，即 key 空串口径）。筛余由应用层按生成列口径归一 key 精确比对。
+     * 列名来自服务端解析（metaData→列名 ∩ 物理列，过标识符校验）后 ${} 拼接；值全部 #{} 参数化。
+     */
+    List<Map<String, Object>> selectUniKeyRows(@Param("tableName") String tableName,
+                                               @Param("memberColumns") List<String> memberColumns,
+                                               @Param("eqValues") List<Object> eqValues,
+                                               @Param("nonNullCount") int nonNullCount,
+                                               @Param("excludeId") String excludeId);
+
+    /** 复合唯一兜底·还原路径：按主键取行成员值（不过软删过滤，还原前读被还原行） */
+    Map<String, Object> selectMemberRowById(@Param("tableName") String tableName,
+                                            @Param("memberColumns") List<String> memberColumns,
+                                            @Param("id") String id);
 }

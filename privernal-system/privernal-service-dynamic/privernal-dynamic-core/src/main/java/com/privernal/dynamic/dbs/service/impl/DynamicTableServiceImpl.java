@@ -36,6 +36,7 @@ import com.privernal.dynamic.dbs.mapper.DynamicFormColumnMapper;
 import com.privernal.dynamic.dbs.mapper.DynamicFormMapper;
 import com.privernal.dynamic.dbs.service.DynamicSubTableService;
 import com.privernal.dynamic.dbs.service.DynamicTableService;
+import com.privernal.dynamic.dbs.support.CompositeUniqueGuard;
 import com.privernal.dynamic.dbs.support.SafeConditionFragment;
 import com.privernal.dynamic.advanced.engine.DataWriteAttributes;
 import com.privernal.dynamic.advanced.engine.LinkageDispatcher;
@@ -130,6 +131,10 @@ public class DynamicTableServiceImpl implements DynamicTableService {
     @Autowired
     private com.privernal.dynamic.advanced.trigger.DateExpiryRegistrar dateExpiryRegistrar;
 
+    /** 复合唯一应用层判重兜底（5.9）：表无 uni_key 生成列（SQLite 无 md5 / 存量表）时在写入路径查-改判重 */
+    @Autowired
+    private CompositeUniqueGuard compositeUniqueGuard;
+
     /** 数据删除级联取消用：deleteById 处于 @DS("#database") 业务库上下文，
      *  system_schedule_task 在主库，必须换线程离开数据源栈（仿 WebhookEventService.enqueueAsync） */
     private final java.util.concurrent.ExecutorService scheduleCancelExecutor =
@@ -198,15 +203,32 @@ public class DynamicTableServiceImpl implements DynamicTableService {
         // id 为主键列恒保留。元数据查询查的是 information_schema，必须忽略组织数据范围
         // （拦截器会拼 organization_id 条件，information_schema 无此列）
         Boolean oldIgnoreForColumns = OrganizationContextHolder.isIgnore();
+        Set<String> existingColumns = Set.of();
+        boolean hasUniKeyColumns = false;
+        Map<String, String> uniColumnTypes = Map.of();
         try {
             OrganizationContextHolder.setIgnore(true);
             List<MysqlTableInfo> tableColumns = dynamicTableMapper.executeQueryForColumns(databaseDialect.buildGetTableColumnsSql(tableName));
-            Set<String> existingColumns = new HashSet<>(ClassTools.getPropertyValueList(tableColumns, MysqlTableInfo.COLUMN_NAME_KEY));
+            Set<String> columns = new HashSet<>(ClassTools.getPropertyValueList(tableColumns, MysqlTableInfo.COLUMN_NAME_KEY));
+            existingColumns = columns;
             dataTemp.keySet().removeIf(key ->
-                    !Constants.KEY_FIELD.equalsIgnoreCase(key) && !existingColumns.contains(key));
+                    !Constants.KEY_FIELD.equalsIgnoreCase(key) && !columns.contains(key));
+            // 复合唯一应用层判重兜底（5.9）的前置判定：物理表有 uni_key_* 生成列的（方言支持生成列）
+            // 由数据库唯一索引判重，应用层不重复查；没有的（SQLite 无 md5 / 存量表）才走兜底
+            hasUniKeyColumns = existingColumns.stream().anyMatch(c -> c != null && c.startsWith("uni_key_"));
+            uniColumnTypes = new HashMap<>();
+            for (MysqlTableInfo info : tableColumns) {
+                if (info.getColumn_name() != null) {
+                    uniColumnTypes.put(info.getColumn_name(), info.getData_type());
+                }
+            }
         } finally {
             OrganizationContextHolder.setIgnore(oldIgnoreForColumns);
         }
+        // 解析复合唯一组（表无 uni_key 列时才查 metaData——有生成列的方言零额外开销）
+        List<FormTransferTable.CompositeUniqueGroup> uniGroups = hasUniKeyColumns
+                ? List.of()
+                : compositeUniqueGuard.resolveGroups(tableName, existingColumns);
         log.debug("剔除动态表不存在列后保存：table={}, columns={}", tableName, dataTemp.keySet());
         // 写入属性：来源标记/级联深度/免登代理身份（调用方 push，作用域一次方法调用，§7.5.3）
         DataWriteAttributes.Snapshot writeAttrs = DataWriteAttributes.peek();
@@ -225,6 +247,10 @@ public class DynamicTableServiceImpl implements DynamicTableService {
             }
             // 列配置了「保存数据的默认值」且本次提交无值时，落库默认值（业务字段；系统字段锁定不可配）
             applyColumnDefaults(tableName, dataTemp);
+            // 复合唯一兜底（5.9）：默认值先落（参与 key），无 uni_key 生成列的表在应用层判重
+            if (!uniGroups.isEmpty()) {
+                compositeUniqueGuard.assertNoConflict(tableName, uniGroups, dataTemp, uniColumnTypes, null);
+            }
             // 动态表 created_by/department_id 为 NOT NULL，新增时补齐审计字段（与更新分支的 updated_* 对应）
             dataTemp.put("created_time", new Date());
             String userId = SecurityUtils.getUserId();
@@ -264,6 +290,13 @@ public class DynamicTableServiceImpl implements DynamicTableService {
                 dataTemp.put("updated_by", writeAttrs.proxyCreatedBy);
             }
             log.debug("更新动态表数据：table={}, id={}", tableName, updateId);
+            // 复合唯一兜底（5.9）：更新是部分字段提交，生效行 = 库里全行 ∪ 本次提交键，
+            // 成员值取合并结果（提交键覆盖库值），排除自身
+            if (!uniGroups.isEmpty()) {
+                Map<String, Object> effectiveRow = beforeRow == null ? new HashMap<>() : new HashMap<>(beforeRow);
+                effectiveRow.putAll(dataTemp);
+                compositeUniqueGuard.assertNoConflict(tableName, uniGroups, effectiveRow, uniColumnTypes, updateId);
+            }
             dynamicTableDataMapper.update(tableName, dataTemp);
             dispatchSyncLinkage(database, tableName, updateId, "UPDATE", beforeRow, dataTemp, writeAttrs, writeMillis);
             publishDataEvent(WebhookEventTypes.DATA_UPDATED, tableName, updateId, data, beforeRow, writeAttrs, writeMillis);
@@ -526,6 +559,30 @@ public class DynamicTableServiceImpl implements DynamicTableService {
         Assert.hasLength(tableName, "tableName must not be empty");
         Assert.hasLength(id, "id must not be empty");
         assertValidIdentifier(tableName);
+        // 复合唯一还原预检（5.9）：MySQL 由 (uni_key, deleted_time) 唯一索引拦同组同值还原，
+        // SQLite 无 uni_key 列由应用层补同一拦截；有生成列的表直接跳过（错误口径维持索引报错）
+        List<MysqlTableInfo> restoreColumns = null;
+        Boolean oldIgnore = OrganizationContextHolder.isIgnore();
+        try {
+            OrganizationContextHolder.setIgnore(true);
+            restoreColumns = dynamicTableMapper.executeQueryForColumns(databaseDialect.buildGetTableColumnsSql(tableName));
+        } finally {
+            OrganizationContextHolder.setIgnore(oldIgnore);
+        }
+        Set<String> restoreColumnNames = new HashSet<>(ClassTools.getPropertyValueList(restoreColumns, MysqlTableInfo.COLUMN_NAME_KEY));
+        if (!restoreColumnNames.stream().anyMatch(c -> c != null && c.startsWith("uni_key_"))) {
+            List<FormTransferTable.CompositeUniqueGroup> restoreGroups =
+                    compositeUniqueGuard.resolveGroups(tableName, restoreColumnNames);
+            if (!restoreGroups.isEmpty()) {
+                Map<String, String> restoreTypes = new HashMap<>();
+                for (MysqlTableInfo info : restoreColumns) {
+                    if (info.getColumn_name() != null) {
+                        restoreTypes.put(info.getColumn_name(), info.getData_type());
+                    }
+                }
+                compositeUniqueGuard.assertRestoreNoConflict(tableName, restoreGroups, restoreTypes, id);
+            }
+        }
         dynamicTableDataMapper.restoreById(tableName, id);
     }
 

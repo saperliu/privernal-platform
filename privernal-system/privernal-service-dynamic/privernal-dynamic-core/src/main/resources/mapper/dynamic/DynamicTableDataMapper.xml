@@ -231,4 +231,37 @@
         </if>
     </select>
 
+    <!-- 复合唯一应用层判重兜底（5.9）候选行捞取（活跃行）：筛条件为「非空成员有序序列相等」的超集——
+         每列 is null 或 ∈ eqValues（覆盖非空值跨列位漂移，如 [NULL,w] 与 [w,NULL] 同 key），
+         且非空列数 = nonNullCount（eqValues 空时退化为全 NULL 行=key 空串口径）；
+         筛余由应用层按生成列口径归一 key 精确比对。
+         列名来自服务端解析（metaData→列名 ∩ 物理列，过标识符校验）后 ${} 拼接；值全部 #{} 参数化 -->
+    <select id="selectUniKeyRows" parameterType="java.util.Map" resultType="java.util.HashMap">
+        select `id`
+        <if test="memberColumns != null and memberColumns.size() > 0">
+            , <foreach collection="memberColumns" item="m" separator=", ">`${m}`</foreach>
+        </if>
+        from `${tableName}`
+        where deleted_flag = 'N'
+        <if test="excludeId != null and excludeId != ''">
+            and id != #{excludeId}
+        </if>
+        <if test="eqValues != null and eqValues.size() > 0">
+            and <foreach collection="memberColumns" item="m" separator=" and ">(`${m}` is null or `${m}` in
+                <foreach collection="eqValues" item="v" open="(" separator="," close=")">#{v}</foreach>)
+            </foreach>
+        </if>
+        and <foreach collection="memberColumns" item="m" separator=" + ">(case when `${m}` is not null then 1 else 0 end)</foreach> = #{nonNullCount}
+    </select>
+
+    <!-- 复合唯一兜底·还原路径：按主键取行成员值（不过软删过滤，还原前读被还原行） -->
+    <select id="selectMemberRowById" parameterType="java.util.Map" resultType="java.util.HashMap">
+        select `id`
+        <if test="memberColumns != null and memberColumns.size() > 0">
+            , <foreach collection="memberColumns" item="m" separator=", ">`${m}`</foreach>
+        </if>
+        from `${tableName}`
+        where id = #{id}
+    </select>
+
 </mapper>

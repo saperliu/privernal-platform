@@ -290,6 +290,56 @@ public class FormTransferTable {
     }
 
     /**
+     * 复合唯一组定义（应用层判重兜底用）：name=组名（已按列名口径转换），members=成员物理列名（有序）。
+     */
+    public record CompositeUniqueGroup(String name, List<String> members) {
+    }
+
+    /**
+     * 解析 metaData 根节点的复合唯一组，供写入路径的应用层判重兜底（5.9）消费。
+     * 校验口径与 {@link #appendCompositeUniqueColumns} 一致：成员转列名、限本表已存在列、组内去重、2–7 个。
+     * 与 DDL 的差异：不走方言生成列能力闸门——被闸门跳过的方言（SQLite 无 md5）正是兜底要覆盖的场景，
+     * existingColumns 传物理表实际列（information_schema 口径），成员不存在的组按不完整跳过。
+     */
+    public static List<CompositeUniqueGroup> resolveCompositeUniqueGroups(Map<String, Object> metaDataRoot,
+                                                                          Set<String> existingColumns) {
+        if (metaDataRoot == null || existingColumns == null || existingColumns.isEmpty()) {
+            return List.of();
+        }
+        Object groupsObj = metaDataRoot.get("compositeUnique");
+        if (!(groupsObj instanceof List) || ((List<?>) groupsObj).isEmpty()) {
+            return List.of();
+        }
+        List<CompositeUniqueGroup> groups = new ArrayList<>();
+        for (Object groupObj : (List<?>) groupsObj) {
+            if (!(groupObj instanceof Map)) {
+                continue;
+            }
+            Map<?, ?> group = (Map<?, ?>) groupObj;
+            Object nameObj = group.get("name");
+            Object fieldsObj = group.get("fields");
+            if (nameObj == null || !(fieldsObj instanceof List)) {
+                continue;
+            }
+            String name = toDbColumnName(String.valueOf(nameObj));
+            if (name == null || name.isEmpty()) {
+                continue;
+            }
+            List<String> members = new ArrayList<>();
+            for (Object code : (List<?>) fieldsObj) {
+                String column = toDbColumnName(String.valueOf(code));
+                if (column != null && !column.isEmpty() && existingColumns.contains(column) && !members.contains(column)) {
+                    members.add(column);
+                }
+            }
+            if (members.size() >= 2 && members.size() <= 7) {
+                groups.add(new CompositeUniqueGroup(name, members));
+            }
+        }
+        return groups;
+    }
+
+    /**
      * 递归解析子节点中的表单字段
      *
      * @param child    当前节点
